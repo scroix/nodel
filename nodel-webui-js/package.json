@@ -32,7 +32,6 @@
     "grunt-contrib-watch": "^1.1.0",
     "grunt-google-fonts": "^0.5.0",
     "grunt-text-replace": "^0.4.0",
-    "grunt-twbs": "0.0.5",
     "mkdirp": "^1.0.4",
     "tslib": "^2.3.1",
     "uglify-js": "^3.14.2",
