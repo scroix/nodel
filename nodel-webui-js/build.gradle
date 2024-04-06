@@ -27,7 +27,7 @@ dependencies {
 }
 
 node {
-    version = '12.19.0'
+    version = '20.12.0'
     download = true
 
     workDir = file("${project.buildDir}/nodejs")
@@ -75,6 +75,7 @@ tasks.register('gruntRun', NpxTask) {
     }
 
     command = "grunt"
+    args = ["build"]
     inputs.property('filesChanged', shouldInstall)
     inputs.dir("node_modules")
     outputs.dir("build/grunt")
