@@ -59,8 +59,6 @@ tasks.named('distZip') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-def process
-
 tasks.register('cleanNodelhostTemp') {
     doLast {
         def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
@@ -75,7 +73,9 @@ clean {
     dependsOn 'cleanNodelhostTemp'
 }
 
-tasks.register('startApplication') {
+def process
+
+tasks.register('startNodelhost') {
     dependsOn 'cleanNodelhostTemp'
     doLast {
         def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
@@ -96,17 +96,7 @@ tasks.register('startApplication') {
     }
 }
 
-def cleanupTask = tasks.register('cleanupApplication') {
-    doLast {
-        if (process != null && process.isAlive()) {
-            logger.lifecycle("Terminating the spawned process...")
-            process.destroy()
-            logger.lifecycle("Spawned process terminated.")
-        }
-    }
-}
-
-tasks.register('startApplicationInteractive') {
+tasks.register('startNodelhostInteractive') {
     dependsOn 'cleanNodelhostTemp'
 
     // Declare a variable to store the spawned process
@@ -151,15 +141,15 @@ tasks.register('startApplicationInteractive') {
     }
 
     // Specify the cleanup task to run after this task, even if it fails or is stopped
-    finalizedBy cleanupTask
+    finalizedBy stopNodelhost
 }
 
-
-tasks.register('stopApplication') {
+tasks.register('stopNodelhost') {
     doLast {
-        if (process != null) {
+        if (process != null && process.isAlive()) {
+            logger.lifecycle("Terminating the spawned process...")
             process.destroy()
-            println "Application stopped"
+            logger.lifecycle("Spawned process terminated.")
         }
     }
 }
@@ -171,15 +161,14 @@ task playwright(type: JavaExec) {
 }
 
 test {
-    dependsOn startApplication
+    dependsOn startNodelhost
     useJUnitPlatform()
     testLogging {
         events "passed", "skipped", "failed"
     }
-    finalizedBy stopApplication
+    finalizedBy stopNodelhost
     ignoreFailures = true
 }
-
 
 dependencies {
     implementation project(':nodel-webui-js')
