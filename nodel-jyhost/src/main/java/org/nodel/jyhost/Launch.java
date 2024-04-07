@@ -144,6 +144,13 @@ public class Launch {
         System.out.println("Press Enter to initiate a shutdown.");
         System.out.println();
 
+        // Add shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Received termination signal. Shutting down...");
+            launch.shutdown();
+            System.out.println("Finished.");
+        }));
+
         tryReadFromConsole();
 
         System.out.println("Shutdown initiated...");
