@@ -59,6 +59,43 @@ tasks.named('distZip') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+def process
+
+tasks.register('startApplication') {
+    doLast {
+        def processBuilder = new ProcessBuilder(
+                'java',
+                '-cp', sourceSets.main.runtimeClasspath.asPath,
+                '-ea',
+                'org.nodel.jyhost.Launch'
+        )
+        processBuilder.redirectOutput(new File("$buildDir/output.log"))
+        processBuilder.redirectError(new File("$buildDir/error.log"))
+        process = processBuilder.start()
+    }
+}
+
+tasks.register('stopApplication') {
+    doLast {
+        if (process != null) {
+            process.destroy()
+            println "Application stopped"
+        }
+    }
+}
+
+test {
+    dependsOn startApplication
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+    maxParallelForks = 1 // Ensure tests run sequentially
+    systemProperty 'webdriver.chrome.driver', '/opt/homebrew/bin/chromedriver'
+    finalizedBy stopApplication
+}
+
+
 dependencies {
     implementation project(':nodel-webui-js')
     implementation project(':nodel-framework')
@@ -84,4 +121,10 @@ dependencies {
 
     // Add joda-time dependency
     implementation 'joda-time:joda-time:2.10.14'
+
+    // Selenium dependencies
+    testImplementation 'org.seleniumhq.selenium:selenium-java:4.0.0'
+    testImplementation 'org.seleniumhq.selenium:selenium-chrome-driver:4.0.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
 }
