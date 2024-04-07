@@ -96,6 +96,65 @@ tasks.register('startApplication') {
     }
 }
 
+def cleanupTask = tasks.register('cleanupApplication') {
+    doLast {
+        if (process != null && process.isAlive()) {
+            logger.lifecycle("Terminating the spawned process...")
+            process.destroy()
+            logger.lifecycle("Spawned process terminated.")
+        }
+    }
+}
+
+tasks.register('startApplicationInteractive') {
+    dependsOn 'cleanNodelhostTemp'
+
+    // Declare a variable to store the spawned process
+    process = null
+
+    doLast {
+        def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
+        if (!nodelhostTempDir.exists()) {
+            nodelhostTempDir.mkdirs()
+        }
+
+        def processBuilder = new ProcessBuilder(
+                'java',
+                '-cp', sourceSets.main.runtimeClasspath.asPath,
+                '-ea',
+                'org.nodel.jyhost.Launch'
+        )
+        processBuilder.directory(nodelhostTempDir)
+
+        // Redirect the process output to the Gradle logger
+        processBuilder.redirectErrorStream(true)
+        process = processBuilder.start()
+
+        // Create a separate thread to consume the process output
+        Thread outputThread = new Thread({
+            process.inputStream.eachLine { line ->
+                logger.lifecycle(line)
+            }
+        })
+        outputThread.start()
+
+        // Wait for the process to terminate
+        process.waitFor()
+
+        // Wait for the output thread to finish
+        outputThread.join()
+    }
+
+    // Configure the task to run only if the process is not already running
+    onlyIf {
+        process == null || !process.isAlive()
+    }
+
+    // Specify the cleanup task to run after this task, even if it fails or is stopped
+    finalizedBy cleanupTask
+}
+
+
 tasks.register('stopApplication') {
     doLast {
         if (process != null) {
