@@ -61,16 +61,37 @@ tasks.named('distZip') {
 
 def process
 
-tasks.register('startApplication') {
+tasks.register('cleanNodelhostTemp') {
     doLast {
+        def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
+        if (nodelhostTempDir.exists()) {
+            nodelhostTempDir.deleteDir()
+            println "Cleaned nodelhost-temp directory"
+        }
+    }
+}
+
+clean {
+    dependsOn 'cleanNodelhostTemp'
+}
+
+tasks.register('startApplication') {
+    dependsOn 'cleanNodelhostTemp'
+    doLast {
+        def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
+        if (!nodelhostTempDir.exists()) {
+            nodelhostTempDir.mkdirs()
+        }
+
         def processBuilder = new ProcessBuilder(
                 'java',
                 '-cp', sourceSets.main.runtimeClasspath.asPath,
                 '-ea',
                 'org.nodel.jyhost.Launch'
         )
-        processBuilder.redirectOutput(new File("$buildDir/output.log"))
-        processBuilder.redirectError(new File("$buildDir/error.log"))
+        processBuilder.directory(nodelhostTempDir)
+        processBuilder.redirectOutput(new File("$nodelhostTempDir/output.log"))
+        processBuilder.redirectError(new File("$nodelhostTempDir/error.log"))
         process = processBuilder.start()
     }
 }
@@ -84,14 +105,18 @@ tasks.register('stopApplication') {
     }
 }
 
+// ./gradlew playwright --args="help"
+task playwright(type: JavaExec) {
+    classpath sourceSets.test.runtimeClasspath
+    mainClass = 'com.microsoft.playwright.CLI'
+}
+
 test {
     dependsOn startApplication
     useJUnitPlatform()
     testLogging {
         events "passed", "skipped", "failed"
     }
-    maxParallelForks = 1 // Ensure tests run sequentially
-    systemProperty 'webdriver.chrome.driver', '/opt/homebrew/bin/chromedriver'
     finalizedBy stopApplication
 }
 
@@ -122,9 +147,9 @@ dependencies {
     // Add joda-time dependency
     implementation 'joda-time:joda-time:2.10.14'
 
-    // Selenium dependencies
-    testImplementation 'org.seleniumhq.selenium:selenium-java:4.0.0'
-    testImplementation 'org.seleniumhq.selenium:selenium-chrome-driver:4.0.0'
+    // add Playwright and test dependencies
+    testImplementation 'com.microsoft.playwright:playwright:1.42.0'
+
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
 }
