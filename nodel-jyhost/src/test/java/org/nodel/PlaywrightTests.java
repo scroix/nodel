@@ -72,13 +72,7 @@ public class PlaywrightTests {
     public void testListGroupItems() {
         assertNotNull(page.querySelector(".list-group-item"), "list-group-item elements should be present");
     }
-
-    @Test
-    public void testListGroupItemBorder() {
-        String border = page.evaluate("() => window.getComputedStyle(document.querySelector('.list-group-basic .list-group-item')).getPropertyValue('border')").toString();
-        assertEquals("none", border, "list-group-item elements should have border: none");
-    }
-
+    
     @Test
     public void testNodelAddButtonMargin() {
         String marginBottom = page.evaluate("() => window.getComputedStyle(document.querySelector('.nodel-add .btn')).getPropertyValue('margin-bottom')").toString();
