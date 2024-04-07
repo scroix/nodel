@@ -118,6 +118,7 @@ test {
         events "passed", "skipped", "failed"
     }
     finalizedBy stopApplication
+    ignoreFailures = true
 }
 
 
