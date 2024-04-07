@@ -34,6 +34,8 @@ node {
     nodeProjectDir = file("${project.projectDir}")
 }
 
+npmInstall.args = ['--legacy-peer-deps']
+
 class FileChecker {
     def nodeModulesDir
     def srcDir
@@ -75,7 +77,6 @@ tasks.register('gruntRun', NpxTask) {
     }
 
     command = "grunt"
-    args = ["build"]
     inputs.property('filesChanged', shouldInstall)
     inputs.dir("node_modules")
     outputs.dir("build/grunt")

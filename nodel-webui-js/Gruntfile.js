@@ -36,23 +36,19 @@ module.exports = function(grunt) {
         }]
       }
     },
-    less: {
+    twbs: {
       dark: {
         options: {
-          paths: ['./node_modules/bootstrap/less'],
-        },
-        files: {
-          './build/grunt/v1/css/bootstrap-dark.css': './src/dark/theme.less',
-        },
+          bootstrap: './node_modules/bootstrap',
+          less: './src/dark/'
+        }
       },
       light: {
         options: {
-          paths: ['./node_modules/bootstrap/less'],
-        },
-        files: {
-          './build/grunt/v1/css/bootstrap-light.css': './src/light/theme.less',
-        },
-      },
+          bootstrap: './node_modules/bootstrap',
+          less: './src/light/'
+        }
+      }
     },
     copy: {
       updatetheme: {
@@ -74,7 +70,7 @@ module.exports = function(grunt) {
             cwd: './node_modules/@fortawesome/fontawesome-free/webfonts/',
             src: '**',
             dest: 'build/grunt/v1/fonts/',
-            flatten: true, 
+            flatten: true,
             filter: 'isFile'
           },
           {
@@ -82,7 +78,7 @@ module.exports = function(grunt) {
             cwd: './node_modules/bootstrap/dist/fonts/',
             src: '**',
             dest: 'build/grunt/v1/fonts/',
-            flatten: true, 
+            flatten: true,
             filter: 'isFile'
           },
           {
@@ -256,13 +252,13 @@ module.exports = function(grunt) {
         dest: './build/grunt/v1/js/components.js'
       }
     },
-    uglify: {  
-      options: {  
-        compress: true  
-      },  
-      applib: {  
+    uglify: {
+      options: {
+        compress: true
+      },
+      applib: {
         src: './build/grunt/v1/js/components.js',
-        dest: './build/grunt/v1/js/components.min.js'  
+        dest: './build/grunt/v1/js/components.min.js'
       }
     }
   });
@@ -271,12 +267,12 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-contrib-copy');
   grunt.loadNpmTasks('grunt-concat-css');
   grunt.loadNpmTasks('grunt-contrib-uglify');
-  grunt.loadNpmTasks('grunt-contrib-less');
+  grunt.loadNpmTasks('grunt-twbs');
   grunt.loadNpmTasks('grunt-text-replace');
   grunt.loadNpmTasks('grunt-google-fonts');
   // Task definition
-  grunt.registerTask('default', ['googlefonts', 'copy:updatetheme', 'replace', 'less:dark', 'concat_css:dark', 'less:light', 'concat_css:light', 'copy:main', 'concat', 'uglify']);
-  grunt.registerTask('build', ['copy:updatetheme', 'replace', 'less:dark', 'concat_css:dark', 'less:light', 'concat_css:light', 'copy:main', 'concat', 'uglify']);
+  grunt.registerTask('default', ['googlefonts', 'copy:updatetheme','replace','twbs:dark','concat_css:dark','twbs:light','concat_css:light','copy:main','concat','uglify']);
+  grunt.registerTask('build', ['copy:updatetheme','replace','twbs:dark','concat_css:dark','twbs:light','concat_css:light','copy:main','concat','uglify']);
   grunt.registerTask('gfonts', ['googlefonts']);
   grunt.registerTask('deploy', ['copy:main','copy:deploy']);
 };
