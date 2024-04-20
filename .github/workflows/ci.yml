@@ -16,11 +16,15 @@ on:
 jobs:
   build:
     name: '${{ matrix.os.name}} | Java ${{ matrix.java.version}}'
-    runs-on: ${{ matrix.os.id }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        java: ['8', '11']
+        os:
+          - id: ubuntu-latest
+            name: Linux
+        java:
+          - version: '8'
+          - version: '11'
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK ${{ matrix.java }}
