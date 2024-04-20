@@ -70,7 +70,7 @@ module.exports = function(grunt) {
             cwd: './node_modules/@fortawesome/fontawesome-free/webfonts/',
             src: '**',
             dest: 'build/grunt/v1/fonts/',
-            flatten: true, 
+            flatten: true,
             filter: 'isFile'
           },
           {
@@ -78,7 +78,7 @@ module.exports = function(grunt) {
             cwd: './node_modules/bootstrap/dist/fonts/',
             src: '**',
             dest: 'build/grunt/v1/fonts/',
-            flatten: true, 
+            flatten: true,
             filter: 'isFile'
           },
           {
@@ -252,13 +252,13 @@ module.exports = function(grunt) {
         dest: './build/grunt/v1/js/components.js'
       }
     },
-    uglify: {  
-      options: {  
-        compress: true  
-      },  
-      applib: {  
+    uglify: {
+      options: {
+        compress: true
+      },
+      applib: {
         src: './build/grunt/v1/js/components.js',
-        dest: './build/grunt/v1/js/components.min.js'  
+        dest: './build/grunt/v1/js/components.min.js'
       }
     }
   });

@@ -59,6 +59,117 @@ tasks.named('distZip') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+tasks.register('cleanNodelhostTemp') {
+    doLast {
+        def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
+        if (nodelhostTempDir.exists()) {
+            nodelhostTempDir.deleteDir()
+            println "Cleaned nodelhost-temp directory"
+        }
+    }
+}
+
+clean {
+    dependsOn 'cleanNodelhostTemp'
+}
+
+def process
+
+tasks.register('startNodelhost') {
+    dependsOn 'cleanNodelhostTemp'
+    doLast {
+        def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
+        if (!nodelhostTempDir.exists()) {
+            nodelhostTempDir.mkdirs()
+        }
+
+        def processBuilder = new ProcessBuilder(
+                'java',
+                '-cp', sourceSets.main.runtimeClasspath.asPath,
+                '-ea',
+                'org.nodel.jyhost.Launch'
+        )
+        processBuilder.directory(nodelhostTempDir)
+        processBuilder.redirectOutput(new File("$nodelhostTempDir/output.log"))
+        processBuilder.redirectError(new File("$nodelhostTempDir/error.log"))
+        process = processBuilder.start()
+    }
+}
+
+tasks.register('startNodelhostInteractive') {
+    dependsOn 'cleanNodelhostTemp'
+
+    // Declare a variable to store the spawned process
+    process = null
+
+    doLast {
+        def nodelhostTempDir = new File("$projectDir/nodelhost-temp")
+        if (!nodelhostTempDir.exists()) {
+            nodelhostTempDir.mkdirs()
+        }
+
+        def processBuilder = new ProcessBuilder(
+                'java',
+                '-cp', sourceSets.main.runtimeClasspath.asPath,
+                '-ea',
+                'org.nodel.jyhost.Launch'
+        )
+        processBuilder.directory(nodelhostTempDir)
+
+        // Redirect the process output to the Gradle logger
+        processBuilder.redirectErrorStream(true)
+        process = processBuilder.start()
+
+        // Create a separate thread to consume the process output
+        Thread outputThread = new Thread({
+            process.inputStream.eachLine { line ->
+                logger.lifecycle(line)
+            }
+        })
+        outputThread.start()
+
+        // Wait for the process to terminate
+        process.waitFor()
+
+        // Wait for the output thread to finish
+        outputThread.join()
+    }
+
+    // Configure the task to run only if the process is not already running
+    onlyIf {
+        process == null || !process.isAlive()
+    }
+
+    // Specify the cleanup task to run after this task, even if it fails or is stopped
+    finalizedBy stopNodelhost
+}
+
+tasks.register('stopNodelhost') {
+    doLast {
+        if (process != null && process.isAlive()) {
+            logger.lifecycle("Terminating the spawned process...")
+            process.destroy()
+            logger.lifecycle("Spawned process terminated.")
+        }
+    }
+}
+
+// ./gradlew playwright --args="help"
+task playwright(type: JavaExec) {
+    classpath sourceSets.test.runtimeClasspath
+    mainClass = 'com.microsoft.playwright.CLI'
+}
+
+test {
+    dependsOn startNodelhost
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+    finalizedBy stopNodelhost
+    ignoreFailures = true
+}
+
 dependencies {
     implementation project(':nodel-webui-js')
     implementation project(':nodel-framework')
@@ -84,4 +195,10 @@ dependencies {
 
     // Add joda-time dependency
     implementation 'joda-time:joda-time:2.10.14'
+
+    // add Playwright and test dependencies
+    testImplementation 'com.microsoft.playwright:playwright:1.42.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
 }
