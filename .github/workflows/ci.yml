@@ -27,10 +27,10 @@ jobs:
           - version: '11'
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK ${{ matrix.java }}
+      - name: Set up JDK ${{ matrix.java.version }}
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.java }}
+          java-version: ${{ matrix.java.version }}
           distribution: 'temurin'
 
       # Configure Gradle for optimal use in GiHub Actions, including caching of downloaded dependencies.
