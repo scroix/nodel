@@ -4,24 +4,36 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 
 /**
- * This class is reserved for Python-Java interfacing using GraalVM.
+ * This class provides Python-Java interfacing using GraalVM.
  */
 public class PyToolkit {
     
     private static Context pythonContext;
+    private static Value emptyDictClass;
     
     static {
         pythonContext = Context.newBuilder("python")
                               .allowAllAccess(true)
                               .build();
-        // Create immutable empty dict using Python's frozendict
+                              
+        // Get MappingProxyType for immutable dicts
         pythonContext.eval("python", "from types import MappingProxyType");
+        emptyDictClass = pythonContext.eval("python", "MappingProxyType");
     }
     
     /**
      * A convenient immutable constant for sharing.
      */
-    public final static Value EmptyDict = pythonContext.eval("python", "MappingProxyType({})");
+    public final static Value EmptyDict = emptyDictClass.newInstance();
+    
+    /**
+     * Creates a new Python context with full access
+     */
+    public static Context createContext() {
+        return Context.newBuilder("python")
+                     .allowAllAccess(true)
+                     .build();
+    }
     
     /**
      * Cleanup resources
