@@ -98,7 +98,8 @@ dependencies {
     discoveryFixture testFixtures(project(':nodel-framework'))
     implementation 'commons-daemon:commons-daemon:1.6.0'
     implementation 'org.slf4j:slf4j-api:1.7.10'
-    implementation 'org.graalvm.python:python-community:23.1.0'
+    implementation 'org.graalvm.polyglot:polyglot:23.1.0'
+    implementation 'org.graalvm.polyglot:python:23.1.0'
     implementation 'org.graalvm.sdk:graal-sdk:23.1.0'
     
     // for the Nodel HTTP client:
