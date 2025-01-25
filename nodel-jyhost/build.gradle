@@ -89,9 +89,13 @@ dependencies {
     discoveryFixture testFixtures(project(':nodel-framework'))
     implementation 'commons-daemon:commons-daemon:1.6.0'
     implementation 'org.slf4j:slf4j-api:1.7.10'
-    implementation 'org.graalvm.polyglot:polyglot:23.1.0'
-    implementation 'org.graalvm.polyglot:python:23.1.0'
-    implementation 'org.graalvm.sdk:graal-sdk:23.1.0'
+    
+    // GraalVM Python dependencies
+    implementation platform('org.graalvm.sdk:graal-sdk-bom:23.1.0')
+    implementation 'org.graalvm.sdk:graal-sdk'
+    implementation 'org.graalvm.truffle:truffle-api'
+    implementation 'org.graalvm.polyglot:polyglot'
+    implementation 'org.graalvm.polyglot:python'
     
     // for the Nodel HTTP client:
     implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.14'
