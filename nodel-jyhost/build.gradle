@@ -3,6 +3,7 @@ plugins {
     id 'application'
     id 'maven-publish'
     id 'eclipse'
+    id 'org.graalvm.buildtools.native' version '0.9.28'
 }
 
 repositories {
@@ -64,6 +65,19 @@ tasks.build {
     finalizedBy 'fatJar'
 }
 
+graalvmNative {
+    binaries {
+        main {
+            buildArgs.addAll([
+                '--initialize-at-run-time=org.python',
+                '--initialize-at-build-time=org.slf4j',
+                '-H:+ReportExceptionStackTraces'
+            ])
+            imageName = 'nodelhost'
+        }
+    }
+}
+
 tasks.named('distTar') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
@@ -84,8 +98,9 @@ dependencies {
     discoveryFixture testFixtures(project(':nodel-framework'))
     implementation 'commons-daemon:commons-daemon:1.6.0'
     implementation 'org.slf4j:slf4j-api:1.7.10'
-    implementation 'org.python:jython-standalone:2.5.4-rc1'
-
+    implementation 'org.graalvm.python:python-community:23.1.0'
+    implementation 'org.graalvm.sdk:graal-sdk:23.1.0'
+    
     // for the Nodel HTTP client:
     implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.14'
 
@@ -103,176 +118,5 @@ dependencies {
     runtimeOnly 'io.jsonwebtoken:jjwt-orgjson:0.12.6'
 
     // Add joda-time dependency
-    implementation 'joda-time:joda-time:2.14.0'
-
-    // Playwright e2e testing
-    testImplementation 'com.microsoft.playwright:playwright:1.52.0'
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.12.2'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.12.2'
-    // JUnit 5.11+ requires an aligned platform-launcher; this module wires JUnit manually
-    // (no JVM Test Suite plugin) so declare it explicitly to avoid Gradle's older bundled launcher.
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
-}
-
-// Test infrastructure documentation moved to BUILDING.md (see "TESTING").
-def nodelProcess = null
-def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
-def discoveryEnv = System.getenv('NODEL_TEST_DISCOVERY')
-def useLocalDiscovery = (discoveryEnv == null || discoveryEnv.trim().isEmpty()
-        || discoveryEnv.trim().equalsIgnoreCase('false') || discoveryEnv.trim().equals('0'))
-
-tasks.register('cleanNodelhostTemp', Delete) {
-    delete layout.projectDirectory.dir('nodelhost-temp')
-}
-
-tasks.register('startNodelhost') {
-    dependsOn 'cleanNodelhostTemp', 'classes', configurations.discoveryFixture
-    doLast {
-        def hostClasspath = files(sourceSets.main.runtimeClasspath, configurations.discoveryFixture).asPath
-        // Kill any existing process on the test port before starting
-        if (isWindows) {
-            ['powershell', '-Command',
-             'Get-NetTCPConnection -LocalPort 18085 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }'
-            ].execute().waitFor()
-        } else {
-            ['bash', '-c', 'lsof -ti :18085 | xargs kill -9 2>/dev/null || true'].execute().waitFor()
-        }
-        // Brief pause to ensure port is released
-        Thread.sleep(1000)
-
-        def tempDir = layout.projectDirectory.dir('nodelhost-temp').asFile
-        tempDir.mkdirs()
-
-        if (useLocalDiscovery) {
-            logger.lifecycle("Using LocalAutoDNS for tests (set NODEL_TEST_DISCOVERY=1 for multicast discovery)")
-        } else {
-            logger.lifecycle("Using multicast AutoDNS for tests (NODEL_TEST_DISCOVERY enabled)")
-        }
-
-        def pb
-        if (isWindows) {
-            // Windows: Start java directly with stdin pipe to keep process alive
-            def args = ['java', '-cp', hostClasspath, '-ea']
-            if (useLocalDiscovery) {
-                args.add('-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance')
-            }
-            args.addAll(['org.nodel.jyhost.Launch', '-p', '18085'])
-            pb = new ProcessBuilder(args)
-            pb.redirectInput(ProcessBuilder.Redirect.PIPE)
-        } else {
-            // Unix: Use tail -f /dev/null to keep stdin open (prevents auto-shutdown)
-            def discoveryArg = useLocalDiscovery ? "-Dorg.nodel.discovery.impl='org.nodel.discovery.LocalAutoDNS;instance' " : ""
-            pb = new ProcessBuilder(
-                'bash', '-c',
-                "tail -f /dev/null | java -cp '${hostClasspath}' -ea ${discoveryArg}org.nodel.jyhost.Launch -p 18085"
-            )
-        }
-        pb.directory(tempDir)
-        pb.redirectOutput(new File(tempDir, 'output.log'))
-        pb.redirectError(new File(tempDir, 'error.log'))
-        nodelProcess = pb.start()
-
-        // Wait for server to be ready by checking if HTTP responds
-        def maxAttempts = 60
-        def attempt = 0
-        while (attempt < maxAttempts) {
-            Thread.sleep(1000)
-            try {
-                def url = new URL('http://127.0.0.1:18085/')
-                def conn = url.openConnection()
-                conn.setConnectTimeout(2000)
-                conn.setReadTimeout(2000)
-                conn.connect()
-                def responseCode = conn.responseCode
-                conn.disconnect()
-                if (responseCode == 200) {
-                    logger.lifecycle("Nodel host is ready on port 18085 (HTTP 200)")
-                    break
-                }
-            } catch (Exception e) {
-                // Server not ready yet, continue waiting
-            }
-            attempt++
-            if (attempt >= maxAttempts) {
-                throw new GradleException("Nodel host failed to start within ${maxAttempts} seconds; check nodel-jyhost/nodelhost-temp/output.log and error.log")
-            }
-        }
-    }
-}
-
-tasks.register('stopNodelhost') {
-    doLast {
-        if (nodelProcess?.isAlive()) {
-            nodelProcess.destroyForcibly()
-            nodelProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-        }
-        // Platform-specific orphan process cleanup
-        if (isWindows) {
-            // Windows: Use PowerShell to find and kill process on port 18085
-            ['powershell', '-Command',
-             'Get-NetTCPConnection -LocalPort 18085 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }'
-            ].execute().waitFor()
-        } else {
-            // Unix: Use lsof to find and kill process on port 18085
-            ['bash', '-c', 'lsof -ti :18085 | xargs kill -9 2>/dev/null || true'].execute().waitFor()
-        }
-    }
-}
-
-tasks.register('playwright', JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.microsoft.playwright.CLI'
-}
-
-// Playwright Browser Setup Tasks (used by CI for version-consistent installation)
-tasks.register('playwrightInstallDeps', JavaExec) {
-    description = 'Install Playwright system dependencies for Chromium'
-    group = 'verification'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.microsoft.playwright.CLI'
-    args 'install-deps', 'chromium'
-}
-
-tasks.register('playwrightInstall', JavaExec) {
-    description = 'Install Playwright Chromium browser'
-    group = 'verification'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.microsoft.playwright.CLI'
-    args 'install', 'chromium'
-}
-
-test {
-    dependsOn 'startNodelhost'
-    useJUnitPlatform()
-    testLogging {
-        events 'passed', 'skipped', 'failed'
-        showStandardStreams = true
-    }
-    finalizedBy 'stopNodelhost'
-}
-
-// Integration Tests - all non-E2E-tagged tests (API, smoke and browser-assisted integration tests)
-task integrationTest(type: Test) {
-    dependsOn 'startNodelhost'
-    useJUnitPlatform {
-        excludeTags 'e2e'
-    }
-    testLogging {
-        events 'passed', 'skipped', 'failed'
-        showStandardStreams = true
-    }
-    finalizedBy 'stopNodelhost'
-}
-
-// E2E Tests - Real user interaction tests (click, type, navigate)
-task e2eTest(type: Test) {
-    dependsOn 'startNodelhost'
-    useJUnitPlatform {
-        includeTags 'e2e'
-    }
-    testLogging {
-        events 'passed', 'skipped', 'failed'
-        showStandardStreams = true
-    }
-    finalizedBy 'stopNodelhost'
+    implementation 'joda-time:joda-time:2.10.14'
 }
