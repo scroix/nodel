@@ -15,30 +15,10 @@ jar {
     }
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.release = 11
-}
-
-testing {
-    suites {
-        test {
-            useJUnitJupiter()
-            
-            targets {
-                all {
-                    testTask.configure {
-                        testLogging {
-                            events 'passed', 'skipped', 'failed'
-                        }
-                    }
-                }
-            }
-        }
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
     }
 }
 
