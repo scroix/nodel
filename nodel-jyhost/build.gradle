@@ -4,115 +4,153 @@ plugins {
     id 'maven-publish'
     id 'eclipse'
     id 'org.graalvm.buildtools.native' version '0.9.28'
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
+// Adjust these versions to the latest available
+def polyglotVersion = '24.1.2' // or newer
+
+configurations.all {
+    resolutionStrategy {
+        force "org.graalvm.polyglot:polyglot:${polyglotVersion}"
+        force "org.graalvm.polyglot:python:${polyglotVersion}"
+    }
 }
 
 repositories {
     mavenCentral()
 }
 
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+description = 'Nodel JyHost'
+
+// ------------------------------------------------------------------
+// Dependencies
+// ------------------------------------------------------------------
+dependencies {
+    // Your existing project dependencies:
+    implementation project(':nodel-webui-js')
+    implementation project(':nodel-framework')
+
+    implementation 'commons-daemon:commons-daemon:1.0.15'
+    implementation 'org.slf4j:slf4j-api:1.7.10'
+    implementation 'org.apache.httpcomponents:httpclient:4.5.5'
+    implementation('org.eclipse.jgit:org.eclipse.jgit:3.7.1.+')
+    implementation('org.snmp4j:snmp4j:2.5.8') {
+        exclude group: 'log4j', module: 'log4j'
+    }
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-orgjson:0.11.5'
+    implementation 'joda-time:joda-time:2.10.14'
+
+    // ------------------------------------------------------------------
+    // New GraalVM for JDK 21 dependencies for embedding polyglot Python
+    // ------------------------------------------------------------------
+    // "polyglot" is the core Truffle & Polyglot APIs:
+    implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"
+
+    // "python" pulls in the GraalPy runtime so you can embed Python:
+    // (If you prefer an open-source only version, use "python-community")
+    implementation "org.graalvm.polyglot:python:${polyglotVersion}"
+
+    // If you are using the newer approach, you generally do NOT need
+    // 'org.graalvm.sdk:graal-sdk' or 'org.graalvm.truffle:truffle-api'
+    // directly anymore, as they are included transitively in 'polyglot'.
+}
+
+// ------------------------------------------------------------------
+// Application plugin
+// ------------------------------------------------------------------
 application {
     mainClass = 'org.nodel.jyhost.Launch'
+
+    // If you want to supply extra JVM args at runtime:
+    // applicationDefaultJvmArgs = [...]
 }
 
-compileJava {
-    options.release = 11
-}
-
+// ------------------------------------------------------------------
+// Jar / FatJar tasks
+// ------------------------------------------------------------------
 jar {
     from "$buildDir/output"
     archiveBaseName = 'nodel-jyhost'
     manifest {
-        attributes 'Implementation-Title': 'Nodel JyHost',
+        attributes(
+                'Implementation-Title': 'Nodel JyHost',
                 'Implementation-Version': archiveVersion
+        )
     }
 }
 
-tasks.register('fatJar', Jar) {
-    manifest {
-        attributes 'Implementation-Title': 'Nodel JyHost',
-                'Implementation-Version': archiveVersion,
-                'Main-Class': application.mainClass.get()
-    }
-    archiveAppendix = rootProject.ext.branch
+
+shadowJar {
     archiveBaseName = 'nodelhost'
     archiveClassifier = 'rev' + rootProject.ext.rev
     destinationDirectory = new File(buildDir, 'distributions/standalone')
-    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
-    with jar
-    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
 
-tasks.register('unversioned', Copy) {
-    dependsOn 'fatJar'
-    from(new File(buildDir, 'distributions/standalone')) {
-        rename '.*($archiveVersion)*', 'nodelhost.jar'
+    manifest {
+        attributes(
+                'Implementation-Title': 'Nodel JyHost',
+                'Implementation-Version': archiveVersion,
+                'Main-Class': application.mainClass
+        )
     }
 
+    with jar
+
+    mergeServiceFiles()
+    mergeServiceFiles('META-INF/graalpython')
+    mergeServiceFiles('META-INF/native')
+
+    // Critical for GraalVM polyglot
+    append 'META-INF/truffle/language'
+    append 'META-INF/truffle/instrument'
+
+    // Your existing excludes
+    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+
+    // Optimize the jar size
+    minimize {
+        exclude(dependency('org.graalvm.polyglot:.*:.*'))
+        exclude(dependency('org.graalvm.polyglot:python:.*'))
+    }
+}
+
+tasks.build.dependsOn tasks.shadowJar
+
+tasks.register('unversioned', Copy) {
+    dependsOn 'shadowJar'
+    from(new File(buildDir, 'distributions/standalone')) {
+        rename('.*($archiveVersion)*', 'nodelhost.jar')
+    }
     into new File(buildDir, 'distributions/standalone')
 }
 
-tasks.build {
-    finalizedBy 'fatJar'
-}
-
+// ------------------------------------------------------------------
+// GraalVM Native Image Configuration
+// (Requires GraalVM for JDK 21 or later when building native images.)
+// ------------------------------------------------------------------
 graalvmNative {
     binaries {
         main {
-            buildArgs.addAll([
-                '--initialize-at-run-time=org.python',
-                '--initialize-at-build-time=org.slf4j',
-                '-H:+ReportExceptionStackTraces'
-            ])
             imageName = 'nodelhost'
+            buildArgs.addAll([
+                    // If certain classes should init at build-time or run-time:
+                    '--initialize-at-run-time=org.python',
+                    '--initialize-at-build-time=org.slf4j',
+                    '-H:+ReportExceptionStackTraces'
+            ])
         }
     }
 }
 
+// Avoid duplicates in distribution tasks
 tasks.named('distTar') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.named('distZip') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-configurations {
-    // carries LocalAutoDNS (nodel-framework's test fixtures) so startNodelhost can put it
-    // on the launched host's classpath without it shipping in any production jar
-    discoveryFixture
-}
-
-dependencies {
-    implementation project(':nodel-webui-js')
-    implementation project(':nodel-framework')
-    discoveryFixture testFixtures(project(':nodel-framework'))
-    implementation 'commons-daemon:commons-daemon:1.6.0'
-    implementation 'org.slf4j:slf4j-api:1.7.10'
-    
-    // GraalVM Python dependencies
-    implementation platform('org.graalvm.sdk:graal-sdk-bom:23.1.0')
-    implementation 'org.graalvm.sdk:graal-sdk'
-    implementation 'org.graalvm.truffle:truffle-api'
-    implementation 'org.graalvm.polyglot:polyglot'
-    implementation 'org.graalvm.polyglot:python'
-    
-    // for the Nodel HTTP client:
-    implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.14'
-
-    // convenience dependency: required *only* for 'recipe sync' node
-    implementation 'org.eclipse.jgit:org.eclipse.jgit:3.7.1.201504261725-r'
-
-    // convenience dependency: required for new SNMP-based nodes
-    implementation('org.snmp4j:snmp4j:2.5.8') {
-        exclude group:'log4j', module:'log4j' // (brings one extra dependency: log4j; can explicity exclude it because it's optional at runtime)
-    }
-
-    // convenience dependency: JWTs (JSON Web Tokens), see https://github.com/museumsvictoria/nodel/discussions/297
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-orgjson:0.12.6'
-
-    // Add joda-time dependency
-    implementation 'joda-time:joda-time:2.10.14'
 }
