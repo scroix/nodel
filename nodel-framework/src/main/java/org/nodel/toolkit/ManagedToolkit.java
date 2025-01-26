@@ -1104,5 +1104,59 @@ public class ManagedToolkit {
 
         };
     }
+
+    /**
+     * Provides access to Java classes for Python scripts.
+     * This method is used by the Python import hook to load Java classes dynamically.
+     *
+     * @param className The fully qualified Java class name
+     * @return The Java Class object
+     * @throws ClassNotFoundException if the class cannot be found
+     */
+    public Class<?> getClass(String className) {
+        if (_closed) {
+            throw new IllegalStateException("Node is closed.");
+        }
+
+        try {
+            // Don't try to load packages as classes
+            if (!className.contains(".") || className.endsWith(".")) {
+                throw new ClassNotFoundException("Not a class name: " + className);
+            }
+
+            // Use the proper class loader
+            ClassLoader loader = Thread.currentThread().getContextClassLoader();
+            if (loader == null) {
+                loader = ManagedToolkit.class.getClassLoader();
+            }
+
+            return Class.forName(className, true, loader);
+
+        } catch (ClassNotFoundException e) {
+            // Only log at debug level since this is expected for packages
+            _logger.debug("Class not found: {}", className);
+            throw e;
+        }
+    }
+
+    /**
+     * Tests if a Java class is available.
+     * Used by Python to check if a class exists before attempting to load it.
+     *
+     * @param className The fully qualified Java class name
+     * @return true if the class exists and is accessible
+     */
+    public boolean hasClass(String className) {
+        if (_closed) {
+            return false;
+        }
+
+        try {
+            getClass(className);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
     
 }
