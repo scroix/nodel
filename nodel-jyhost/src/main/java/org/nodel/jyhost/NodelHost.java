@@ -274,7 +274,7 @@ public class NodelHost {
             if (pyNode == null)
                 return;
             
-            pyNode.notifyOfError(exc);
+            pyNode.handleNameRegistrationFailure(exc);
         }
     } // (method)
 
@@ -500,7 +500,7 @@ public class NodelHost {
         // a temporary folder
         
         // TODO: should be able to select which root is applicable
-        File newNodeDir = new File(_root, encodeIntoSafeFilename(name));
+        File newNodeDir = new File(_root, NodelHost.encodeIntoSafeFilename(name));
 
         if (_nodeMap.containsKey(name) || newNodeDir.exists())
             throw new RuntimeException("A node with the name '" + name + "' already exists.");

@@ -61,8 +61,8 @@ import org.nodel.io.Stream;
 import org.nodel.reflection.Param;
 import org.nodel.reflection.Schema;
 import org.nodel.reflection.Serialisation;
-import org.nodel.reflection.Value;
 import org.nodel.reflection.Service;
+import org.nodel.reflection.Value;
 import org.nodel.threading.CallbackQueue;
 import org.nodel.threading.TimerTask;
 import org.nodel.toolkit.Console;
@@ -1005,4 +1005,15 @@ public class PyNode extends BaseDynamicNode {
         _pythonContext.eval("python", snippet);
     }
 
+    /**
+     * Called by the NodelHost when a name registration fault occurs for this node.
+     */
+    public void handleNameRegistrationFailure(Exception exc) {
+        // Call the protected method from the superclass to handle the error notification
+        notifyOfError(exc);
+    }
+
+    public void loadConfig(NodeConfig config) throws Exception {
+        // (async load)
+    }
 }

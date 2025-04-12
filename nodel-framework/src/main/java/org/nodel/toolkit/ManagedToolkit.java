@@ -1113,22 +1113,23 @@ public class ManagedToolkit {
      * @return The Java Class object
      * @throws ClassNotFoundException if the class cannot be found
      */
-    public Class<?> getClass(String className) {
+    public Class<?> getClass(String className) throws ClassNotFoundException {
         if (_closed) {
-            throw new IllegalStateException("Node is closed.");
+            throw new ClassNotFoundException("Toolkit is closed, cannot load class: " + className);
+        }
+
+        // Example context loader logic (replace with actual if different)
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        if (loader == null) {
+            loader = ManagedToolkit.class.getClassLoader();
+        }
+        if (loader == null) {
+            loader = ClassLoader.getSystemClassLoader();
         }
 
         try {
-            // Don't try to load packages as classes
-            if (!className.contains(".") || className.endsWith(".")) {
-                throw new ClassNotFoundException("Not a class name: " + className);
-            }
-
-            // Use the proper class loader
-            ClassLoader loader = Thread.currentThread().getContextClassLoader();
-            if (loader == null) {
-                loader = ManagedToolkit.class.getClassLoader();
-            }
+            // Security checks might go here if needed
+            // ...
 
             return Class.forName(className, true, loader);
 
@@ -1137,6 +1138,7 @@ public class ManagedToolkit {
             _logger.debug("Class not found: {}", className);
             throw e;
         }
+        // Other potential exceptions like LinkageError might also be relevant
     }
 
     /**
