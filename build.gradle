@@ -82,15 +82,13 @@ subprojects {
     apply plugin: 'java'
     group = 'org.nodel'
     version = rootProject.ext.baseVersion
-    
+
     java {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(23)
+        }
     }
-    
-    tasks.withType(JavaCompile).configureEach {
-        options.release = 11
-    }
+
     repositories {
         mavenCentral()
     }

@@ -1,4 +1,10 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral() // Explicitly add mavenCentral
+    }
+}
+
 include 'nodel-framework', 
         'nodel-webui-js', 
         'nodel-jyhost'
-

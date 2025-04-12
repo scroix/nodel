@@ -8,7 +8,7 @@ plugins {
 }
 
 // Adjust these versions to the latest available
-def polyglotVersion = '24.1.2' // or newer
+def polyglotVersion = '23.1.0' // or newer
 
 configurations.all {
     resolutionStrategy {
