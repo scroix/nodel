@@ -89,7 +89,7 @@ public class NodelHost {
      * (threading)
      */
     private Timers _timerThread = new Timers("Nodel host");
-    
+
     /**
      * General purpose lock / signal.
      */

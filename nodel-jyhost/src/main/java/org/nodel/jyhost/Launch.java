@@ -84,11 +84,6 @@ public class Launch {
     private static String[] s_processArgs;
 
     /**
-     * A shared GraalVM Python context (if your application needs a global context).
-     */
-    private static Context s_graalPythonContext;
-
-    /**
      * (see full constructor)
      */
     public Launch() throws StartupException, IOException, JSONException {
@@ -257,28 +252,6 @@ public class Launch {
         }
     }
 
-    /**
-     * Configures the GraalVM Python context.
-     * Replaces the old Jython-based initialisePython() code.
-     */
-    private static void initialiseGraalPython() {
-        // Create a GraalVM Engine if needed (optional).
-        Engine engine = Engine.newBuilder().build();
-
-        // Build a Python context, allowing necessary capabilities.
-        s_graalPythonContext = Context.newBuilder("python")
-                .allowAllAccess(true)   // Carefully consider security
-                .engine(engine)
-                .build();
-
-        // Example usage:
-        // s_graalPythonContext.eval("python", "print('Hello from GraalPython')");
-        //
-        // Adapting JSON objects to Python would require
-        // manual conversion or different bridging strategy
-        // if you rely on dynamic transformations.
-    }
-
     private void start() throws IOException {
         // immediately prevent unintended duplicate instances
         createHostInstanceLockOrFail();
@@ -308,9 +281,6 @@ public class Launch {
             }
             Nodel.updateMessagingPort(requestedMessagingPort);
         }
-
-        // Instead of Jython initialization, use GraalPython
-        initialiseGraalPython();
 
         _logger.info("Nodel [GraalPython] is starting... version=" + VERSION);
 

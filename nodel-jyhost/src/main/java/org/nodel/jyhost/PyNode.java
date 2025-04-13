@@ -83,6 +83,11 @@ public class PyNode extends BaseDynamicNode {
     private static final String PYTHON_LANGUAGE_ID = "python";
 
     /**
+     * The shared GraalVM Python context.
+     */
+    private Context _pythonContext; // Make non-final again
+
+    /**
      * Lock to help avoid overlapping operations, especially around Context access.
      * GraalVM Contexts have their own threading rules, but this adds an outer layer.
      */
@@ -102,11 +107,6 @@ public class PyNode extends BaseDynamicNode {
      * Used to detect changes in the config/script/dependencies.
      */
     private long _fileModifiedHash;
-
-    /**
-     * Our Graal Python context.
-     */
-    private Context _pythonContext;
 
     /**
      * Stores references to Python functions (local actions, remote event handlers).
@@ -156,9 +156,11 @@ public class PyNode extends BaseDynamicNode {
      */
     private File _configFile;
 
-    public PyNode(NodelHost nodelHost, SimpleName name, File root) throws IOException {
+    public PyNode(NodelHost nodelHost, SimpleName name, File root) throws IOException { // Remove Context parameter
         super(name, root);
         _nodelHost = nodelHost;
+        
+        createContext(); // Create the context internally
         
         // Create LineReaders for stdout and stderr
         _outReader = new LineReader();
@@ -296,9 +298,6 @@ public class PyNode extends BaseDynamicNode {
                 // First, clean up any previous bindings 
                 cleanupBindings();
                 
-                // Create and configure the GraalVM Python context
-                createContext();
-
                 // Inject the toolkit into the Python context
                 _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
                 _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
@@ -362,19 +361,47 @@ public class PyNode extends BaseDynamicNode {
      * Creates and configures the GraalVM context.
      */
     private void createContext() {
-        _logger.info("Creating GraalVM Python context");
+        _logger.info("Creating GraalVM Python context for node {}", getName());
         
+        // Create OutputStream wrappers for LineReaders (Writer)
+        OutputStream outStream = new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                // Simple byte-to-char conversion (assuming UTF-8)
+                _outReader.write(new char[]{(char)b});
+            }
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                 _outReader.write(new String(b, off, len, StandardCharsets.UTF_8));
+            }
+        };
+
+        OutputStream errStream = new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                _errReader.write(new char[]{(char)b});
+            }
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                 _errReader.write(new String(b, off, len, StandardCharsets.UTF_8));
+            }
+        };
+
+        // Simplest context creation for now
+        // TODO: Consider sharing the Engine across contexts for performance.
         Context.Builder contextBuilder = Context.newBuilder(PYTHON_LANGUAGE_ID)
             .allowAllAccess(true)
-            .allowHostAccess(HostAccess.ALL)
-            .allowIO(IOAccess.ALL);
+            .allowHostAccess(HostAccess.ALL) // Be cautious with host access
+            .allowIO(IOAccess.ALL)         // Allow file system and network access
+            .out(outStream) // Redirect stdout via wrapper
+            .err(errStream); // Redirect stderr via wrapper
             
-        // Additional configuration options can be set here
-        // For example, set Python paths, working directory, etc.
+        // Add options like Python path if necessary
+        // contextBuilder.option("python.PythonPath", "path/to/libs");
             
-        _pythonContext = contextBuilder.build();
+        _pythonContext = contextBuilder.build(); // Assign the new context
         
-        _logger.info("GraalVM Python context created successfully");
+        _logger.info("GraalVM Python context created successfully for node {}", getName());
     }
 
     /**
@@ -914,14 +941,16 @@ public class PyNode extends BaseDynamicNode {
                 _toolkit = null;
             }
 
-            // Close the GraalVM context
+            // Close the GraalVM context for this node
             if (_pythonContext != null) {
                 try {
+                    _logger.info("Closing Python context for node {}", getName());
                     _pythonContext.close(true); // true = cancel running executions
                 } catch (Exception e) {
-                    _logger.error("Error closing Python context", e);
+                    _logger.error("Error closing Python context for node " + getName(), e);
+                } finally {
+                   _pythonContext = null; // Ensure it's nullified
                 }
-                _pythonContext = null;
             }
 
             _pythonFunctions.clear();
