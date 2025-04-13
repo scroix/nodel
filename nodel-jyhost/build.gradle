@@ -3,12 +3,13 @@ plugins {
     id 'application'
     id 'maven-publish'
     id 'eclipse'
-    id 'org.graalvm.buildtools.native' version '0.9.28'
+    id 'org.graalvm.buildtools.native' version '0.10.6'
     id 'com.gradleup.shadow' version '8.3.5'
+    id 'org.graalvm.python' version '24.2.0' // Match your polyglotVersion
 }
 
 // Adjust these versions to the latest available
-def polyglotVersion = '23.1.0' // or newer
+def polyglotVersion = '24.2.0' // or newer
 
 configurations.all {
     resolutionStrategy {
@@ -58,6 +59,8 @@ dependencies {
     // If you are using the newer approach, you generally do NOT need
     // 'org.graalvm.sdk:graal-sdk' or 'org.graalvm.truffle:truffle-api'
     // directly anymore, as they are included transitively in 'polyglot'.
+
+    implementation "org.graalvm.python:python-embedding:${polyglotVersion}"
 }
 
 // ------------------------------------------------------------------
@@ -98,24 +101,42 @@ shadowJar {
         )
     }
 
-    with jar
-
     mergeServiceFiles()
     mergeServiceFiles('META-INF/graalpython')
     mergeServiceFiles('META-INF/native')
 
-    // Critical for GraalVM polyglot
-    append 'META-INF/truffle/language'
-    append 'META-INF/truffle/instrument'
+    mergeServiceFiles('META-INF/services/*')
+    mergeServiceFiles('META-INF/truffle/*')
+    mergeServiceFiles('META-INF/native-image/*')
 
-    // Your existing excludes
-    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+    // Merge Truffle files using the service file transformer
+    mergeServiceFiles('META-INF/truffle/language')
+    mergeServiceFiles('META-INF/truffle/instrument')
 
-    // Optimize the jar size
-    minimize {
-        exclude(dependency('org.graalvm.polyglot:.*:.*'))
-        exclude(dependency('org.graalvm.polyglot:python:.*'))
+    mergeServiceFiles('META-INF/services/org.graalvm.polyglot.*')
+    mergeServiceFiles('META-INF/truffle/language')
+    mergeServiceFiles('META-INF/truffle/instrument')
+
+    dependencies {
     }
+
+    // Your existing excludes for signing files
+    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+}
+
+// Configure JVM arguments for the run task to handle JPMS restrictions
+run {
+    jvmArgs = [
+        '--add-opens=java.base/jdk.internal.misc=jdk.graal.compiler',
+        '--add-opens=java.base/jdk.internal.module=jdk.graal.compiler',
+        '--add-opens=java.base/java.lang=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+        '--add-opens=java.base/java.io=ALL-UNNAMED',
+        '--add-opens=java.base/java.util=ALL-UNNAMED',
+        '--add-opens=java.base/java.nio=ALL-UNNAMED',
+        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--enable-native-access=ALL-UNNAMED'
+    ]
 }
 
 tasks.build.dependsOn tasks.shadowJar
@@ -133,12 +154,17 @@ tasks.register('unversioned', Copy) {
 // (Requires GraalVM for JDK 21 or later when building native images.)
 // ------------------------------------------------------------------
 graalvmNative {
+
+    agent {
+        enabled = true
+    }
     binaries {
         main {
+            resources.autodetect()
             imageName = 'nodelhost'
             buildArgs.addAll([
                     // If certain classes should init at build-time or run-time:
-                    '--initialize-at-run-time=org.python',
+
                     '--initialize-at-build-time=org.slf4j',
                     '-H:+ReportExceptionStackTraces'
             ])
@@ -153,4 +179,14 @@ tasks.named('distTar') {
 
 tasks.named('distZip') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+graalPy {
+    // List any Python packages you need
+    packages = ["termcolor==2.2"] // Example package
+    
+    // Optional: customize resource location
+    // resourceDirectory = "GRAALPY-VFS/${project.group}/${project.name}"
+    // OR use external directory instead of virtual filesystem
+    // externalDirectory = file("$buildDir/python-resources")
 }

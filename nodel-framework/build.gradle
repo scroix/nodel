@@ -25,6 +25,7 @@ test {
 dependencies {
     implementation 'joda-time:joda-time:2.14.0'
     implementation 'org.slf4j:slf4j-api:1.7.10'
+    implementation "org.graalvm.polyglot:polyglot:24.2.0" // Added GraalVM Polyglot API
 
     // SSH features
     implementation group: 'com.jcraft', name: 'jsch', version: '0.1.55'
@@ -48,4 +49,3 @@ testing {
         }
     }
 }
-

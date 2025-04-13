@@ -1,15 +1,21 @@
 import org.joda.time.DateTime
 
+// Configure dependencies required by the build script itself
 buildscript {
+    // Define repositories where build script dependencies can be found
     repositories {
-        mavenCentral()
+        mavenCentral() // Use Maven Central repository
     }
+    // Define build script dependencies
     dependencies {
-        classpath 'joda-time:joda-time:2.14.0'
+        // Add Joda-Time library for date/time operations within the build script
+        classpath 'joda-time:joda-time:2.10.10'
     }
 }
 
+// Define extra project-wide properties accessible in this build script and subprojects
 ext {
+    // Closure to retrieve Git information using command-line git commands
     getGitInfo = {
         def branch = ""
         def id = ""
@@ -53,19 +59,25 @@ ext {
         }
         
         return [
-                branch : branch,
-                id     : id,
-                rev    : rev,
-                origin : origin
+                branch : 'git rev-parse --abbrev-ref HEAD'.execute().text.trim(), // Get current branch name
+                id     : 'git rev-parse HEAD'.execute().text.trim(), // Get current commit hash
+                rev    : 'git rev-list --count HEAD'.execute().text.trim(), // Get commit count (revision number)
+                origin : 'git config --get remote.origin.url'.execute().text.trim() // Get remote origin URL
         ]
     }
 
+    // Execute the closure to get Git info
     gitInfo = getGitInfo()
+    // Set a build summary based on the commit ID
     buildSummary = gitInfo.id
+    // Get the local hostname
     hostname = InetAddress.getLocalHost().getHostName().toUpperCase()
+    // Get the current date and time
     now = DateTime.now().toString()
+    // Sanitize the revision number (remove non-alphanumeric chars)
     rev = gitInfo.rev.replaceAll(/[^a-zA-Z0-9]/, '')
 
+    // Determine a sanitized branch name ('release' for 'master', strip prefixes)
     branch = gitInfo.branch
     if (branch == 'master') {
         branch = 'release'
@@ -73,23 +85,33 @@ ext {
         branch = branch.substring(branch.indexOf('/') + 1)
     }
 
+    // Define the base version of the project
     baseVersion = '2.2.1'
+    // Construct a detailed version identifier using base version, branch, and revision
     versionIdentifier = "${baseVersion}-${branch}_r${rev}"
+    // Print the calculated version identifier to the console during build
     println "versionIdentifier: ${versionIdentifier}"
 }
 
+// Apply common configuration to all subprojects in this multi-project build
 subprojects {
+    // Apply the Java plugin to enable Java compilation and related tasks
     apply plugin: 'java'
+    // Set the group ID for artifacts produced by subprojects
     group = 'org.nodel'
+    // Set the version for subprojects, inheriting from the root project's baseVersion
     version = rootProject.ext.baseVersion
 
+    // Configure the Java toolchain
     java {
         toolchain {
+            // Specify the Java language version to use for compilation
             languageVersion = JavaLanguageVersion.of(23)
         }
     }
 
+    // Define repositories where project dependencies can be found
     repositories {
-        mavenCentral()
+        mavenCentral() // Use Maven Central repository for subproject dependencies
     }
 }
