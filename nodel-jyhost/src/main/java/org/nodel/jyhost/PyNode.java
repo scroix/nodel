@@ -10,8 +10,11 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream; // for FileInputStream
+import java.io.InputStream;
 import java.io.FileInputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -24,11 +27,15 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.stream.Collectors;
 
 import org.joda.time.DateTime;
 import org.nodel.DateTimes;
 import org.nodel.Exceptions;
 import org.nodel.Handler;
+import org.nodel.Handler.H0;
 import org.nodel.Handler.H1;
 import org.nodel.Handler.H2;
 import org.nodel.SimpleName;
@@ -42,20 +49,7 @@ import org.nodel.core.NodelClientEvent;
 import org.nodel.core.NodelEventHandler;
 import org.nodel.core.NodelServerAction;
 import org.nodel.core.NodelServerEvent;
-import org.nodel.host.BaseDynamicNode;
-import org.nodel.host.Binding;
-import org.nodel.host.Bindings;
-import org.nodel.host.LocalBindings;
-import org.nodel.host.LogEntry;
-import org.nodel.host.NodeConfig;
-import org.nodel.host.NodelActionInfo;
-import org.nodel.host.NodelEventInfo;
-import org.nodel.host.OperationPendingException;
-import org.nodel.host.ParamValues;
-import org.nodel.host.ParameterBinding;
-import org.nodel.host.ParameterBindings;
-import org.nodel.host.RemoteBindingValues;
-import org.nodel.host.RemoteBindings;
+import org.nodel.host.*;
 import org.nodel.io.Files;
 import org.nodel.io.Stream;
 import org.nodel.reflection.Param;
@@ -71,8 +65,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.graalvm.polyglot.Context;
-import org.graalvm.polyglot.Source;
+import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotException;
+import org.graalvm.polyglot.Source;
+import org.graalvm.polyglot.io.IOAccess;
 
 /**
  * Represents a Python-enabled Node under GraalVM (replacing Jython).
@@ -82,7 +78,13 @@ public class PyNode extends BaseDynamicNode {
     private static Logger _logger = LoggerFactory.getLogger(PyNode.class);
 
     /**
-     * Lock to help avoid overlapping operations.
+     * Language ID for GraalVM Python.
+     */
+    private static final String PYTHON_LANGUAGE_ID = "python";
+
+    /**
+     * Lock to help avoid overlapping operations, especially around Context access.
+     * GraalVM Contexts have their own threading rules, but this adds an outer layer.
      */
     private ReentrantLock _busy = new ReentrantLock();
 
@@ -92,12 +94,12 @@ public class PyNode extends BaseDynamicNode {
     private boolean _closed;
 
     /**
-     * The script file.
+     * The main Python script file.
      */
     private File _scriptFile;
 
     /**
-     * Used to detect changes in the config/script.
+     * Used to detect changes in the config/script/dependencies.
      */
     private long _fileModifiedHash;
 
@@ -107,7 +109,7 @@ public class PyNode extends BaseDynamicNode {
     private Context _pythonContext;
 
     /**
-     * Optionally keep references to Python functions.
+     * Stores references to Python functions (local actions, remote event handlers).
      */
     private Map<String, org.graalvm.polyglot.Value> _pythonFunctions = new HashMap<>();
 
@@ -115,10 +117,9 @@ public class PyNode extends BaseDynamicNode {
      * Track stuck function calls.
      */
     private AtomicLong _funcSeqNumber = new AtomicLong();
-    private Map<String, Long> _activeFunctions = new HashMap<>();
 
     /**
-     * Our general-purpose toolkit (was once injected into Jython).
+     * Our general-purpose toolkit (injected into the Python context).
      */
     protected ManagedToolkit _toolkit;
 
@@ -130,16 +131,59 @@ public class PyNode extends BaseDynamicNode {
         return _nodelHost;
     }
 
+    /**
+     * For standard output from the Python context.
+     */
+    protected LineReader _outReader;
+
+    /**
+     * For error output from the Python context.
+     */
+    protected LineReader _errReader;
+
+    /**
+     * A callback queue for orderly, predictable handling of callbacks.
+     */
+    private CallbackQueue _callbackQueue = new CallbackQueue();
+
+    /**
+     * The node configuration object.
+     */
+    private NodeConfig _nodeConfig;
+    
+    /**
+     * The config file that contains the node configuration.
+     */
+    private File _configFile;
+
     public PyNode(NodelHost nodelHost, SimpleName name, File root) throws IOException {
         super(name, root);
         _nodelHost = nodelHost;
-        init();
+        
+        // Create LineReaders for stdout and stderr
+        _outReader = new LineReader();
+        _outReader.setHandler(new Handler.H1<String>() {
+            @Override
+            public void handle(String line) {
+                log(line);
+            }
+        });
+        
+        _errReader = new LineReader();
+        _errReader.setHandler(new Handler.H1<String>() {
+            @Override
+            public void handle(String line) {
+                logError(line);
+            }
+        });
+        
+        // init() is called by BaseDynamicNode constructor via checkInit
     }
 
     /**
      * Script info container.
      */
-    public class ScriptInfo {
+    public static class ScriptInfo {
         @Value(name="modified")
         public DateTime modified;
 
@@ -155,13 +199,13 @@ public class PyNode extends BaseDynamicNode {
         public ScriptInfo getScriptInfo() throws IOException {
             ScriptInfo info = new ScriptInfo();
             info.modified = new DateTime(_scriptFile.lastModified());
-            info.script = Stream.readFully(_scriptFile);
+            info.script = readFullyFromStream(new FileInputStream(_scriptFile));
             return info;
         }
 
         @Service(name="raw")
         public String getRawScript() throws IOException {
-            return Stream.readFully(_scriptFile);
+            return readFullyFromStream(new FileInputStream(_scriptFile));
         }
 
         @Service(name="save")
@@ -199,821 +243,771 @@ public class PyNode extends BaseDynamicNode {
 
     private Script _script = new Script();
 
-    @Service(name="script")
-    public Script getScript() {
-        return _script;
+    public boolean requiresInit() {
+        return true;
     }
-
-    /**
-     * A callback queue for concurrency.
-     */
-    private CallbackQueue _callbackQueue;
-
-    /**
-     * Exception handler for user code.
-     */
-    private H2<String, Exception> _exceptionHandler = new Handler.H2<String, Exception>() {
-        @Override
-        public void handle(String context, Exception exc) {
-            String msg = "(" + context + ") " + exc.toString();
-            _logger.info(msg);
-            _errReader.inject(msg);
-        }
-    };
-
-    /**
-     * Additional context for event-based exceptions.
-     */
-    private H1<Exception> _emitExceptionHandler = new H1<Exception>() {
-        @Override
-        public void handle(Exception exc) {
-            Handler.tryHandle(_exceptionHandler, "Emitter", exc);
-        }
-    };
-
-    /**
-     * One-time init.
-     */
-    private void init() throws IOException {
-        // Provide nodeConfig templates if needed
-        String filePrefix = "nodeConfig";
-
-        String schemaStr = Serialisation.serialise(Schema.getSchemaObject(NodeConfig.class), 4);
-        File schemaFile = new File(_root, "_" + filePrefix + "_schema.json");
-        if (!schemaFile.exists() || !Stream.tryReadFully(schemaFile).equals(schemaStr)) {
-            Stream.writeFully(schemaFile, schemaStr);
-        }
-
-        String exampleStr = Serialisation.serialise(NodeConfig.Example, 4);
-        File exampleFile = new File(_root, "_" + filePrefix + "_example.json");
-        if (!exampleFile.exists() || !Stream.tryReadFully(exampleFile).equals(exampleStr)) {
-            Stream.writeFully(exampleFile, exampleStr);
-        }
-
-        _configFile = new File(_root, filePrefix + ".json");
-        if (!_configFile.exists()) {
-            Stream.writeFully(_configFile, Serialisation.serialise(NodeConfig.Empty, 4));
-        }
-
-        _scriptFile = new File(_root, "script.py");
-        if (!_scriptFile.exists()) {
-            Stream.writeFully(_scriptFile, ExampleScript.get());
-        }
-
-        // watch config changes
-        s_threadPool.execute(() -> monitorConfig());
-
-        // watch stuck functions
-        if (!_closed) {
-            s_timerThread.schedule(new TimerTask() {
-                @Override
-                public void run() {
-                    checkActiveFunctions();
-                }
-            }, 60000);
-        }
-    }
-
-    /**
-     * Watch for stuck calls
-     */
-    private void checkActiveFunctions() {
-        StringBuilder sb = null;
-        try {
-            synchronized (_activeFunctions) {
-                if (_activeFunctions.isEmpty())
-                    return;
-
-                for (Entry<String, Long> e : _activeFunctions.entrySet()) {
-                    String funcKey = e.getKey();
-                    long startedNanos = e.getValue();
-                    long ms = (System.nanoTime() - startedNanos)/1_000_000L;
-                    if (ms > 2*60000) {
-                        if (sb == null) sb = new StringBuilder();
-                        else sb.append(", ");
-                        sb.append(funcKey + " (" + DateTimes.formatShortDuration(ms) + ")");
-                    }
-                }
-            }
-            if (sb != null) {
-                String msg = "These functions are stuck - " + sb;
-                _errReader.inject(msg);
-                _logger.warn(msg);
-            }
-        } finally {
-            if (!_closed) {
-                s_timerThread.schedule(new TimerTask() {
-                    @Override
-                    public void run() {
-                        checkActiveFunctions();
-                    }
-                }, 60000);
-            }
-        }
-    }
-
-    /**
-     * Monitor config file changes.
-     */
-    private void monitorConfig() {
-        try {
-            if (_configFile.exists()) {
-                long mHash = _configFile.lastModified() + _scriptFile.lastModified();
-                if (mHash != _fileModifiedHash) {
-                    NodeConfig config = (NodeConfig) Serialisation.coerceFromJSON(NodeConfig.class,
-                            Stream.readFully(_configFile));
-                    applyConfig(config);
-                    _fileModifiedHash = mHash;
-                    _logger.info("Config updated successfully.");
-                }
-            }
-        } catch (Exception exc) {
-            String msg = "Could not parse node config; node will not be re-started. "
-                    + Exceptions.formatExceptionGraph(exc);
-            _errReader.inject(msg);
-            _logger.warn("Config monitoring error; will retry in 10s", exc);
-        } finally {
-            if (!_closed) {
-                s_timerThread.schedule(s_threadPool, new TimerTask() {
-                    @Override
-                    public void run() {
-                        monitorConfig();
-                    }
-                }, 10000);
-            }
-        }
-    }
-
-    /**
-     * Applies new config (and re-launches scripts).
-     */
-    private void applyConfig(final NodeConfig config) throws Exception {
+    
+    public void init() throws Exception {
+        // Called by BaseDynamicNode when first needed or after reload
         _busy.lock();
         try {
-            Threads.AsyncResult<Void> op = Threads.executeAsync(new Callable<Void>() {
+            if (_closed) return; // Do not re-init if permanently closed
+
+            _logger.info("Initialising Python node...");
+
+            // Locate script file
+            _scriptFile = new File(_root, "script.py");
+            if (!_scriptFile.exists()) {
+                // Create default script file if it doesn't exist
+                Stream.writeFully(_scriptFile, "# Default Python script\n\ndef main():\n    print('Hello from Python')\n");
+            }
+            
+            // Clear existing Python functions
+            _pythonFunctions.clear();
+
+            // Initialise the toolkit for this node
+            _callbackQueue = new CallbackQueue();
+            _toolkit = new ManagedToolkit(this);
+            
+            // Attach a Console interface
+            _toolkit.attachConsole(new Console.Interface() {
                 @Override
-                public Void call() throws Exception {
-                    applyConfig0(config);
-                    return null;
+                public void info(Object obj) {
+                    logInfo(String.valueOf(obj));
+                }
+                
+                @Override
+                public void log(Object obj) {
+                    log(String.valueOf(obj));
+                }
+                
+                @Override
+                public void error(Object obj) {
+                    logError(String.valueOf(obj));
+                }
+                
+                @Override
+                public void warn(Object obj) {
+                    logWarning(String.valueOf(obj));
                 }
             });
-            op.waitForResultOrThrowException();
+            
+            try {
+                // First, clean up any previous bindings 
+                cleanupBindings();
+                
+                // Create and configure the GraalVM Python context
+                createContext();
+
+                // Inject the toolkit into the Python context
+                _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
+                _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
+
+                // Set up the Python environment (e.g., execute bootstrap code)
+                if (_scriptFile.exists()) {
+                    executeFileScript(_scriptFile);
+                }
+
+                // Extract bindings from Python
+                List<String> warnings = new ArrayList<>();
+                // TODO: Implement proper BindingsExtractor for GraalVM Python
+                Bindings bindings = Bindings.Empty; // Temporary placeholder
+                setBindings(bindings);
+                for (String warning : warnings) {
+                    _logger.warn(warning);
+                }
+
+                // Execute any 'after_main' functions
+                // TODO: Call Python main function or equivalent
+
+                // Store file modification hash for reload detection
+                _fileModifiedHash = calculateFileModifiedHash();
+
+                _logger.info("Python node initialised.");
+                
+                // Mark as successfully initialized by setting the description
+                synchronized (_signal) {
+                    _started = DateTime.now();
+                    _desc = "GraalVM Python Node";
+                    _signal.notifyAll();
+                }
+                
+            } catch (Exception e) {
+                _logger.error("Failed to initialise Python node: " + e.toString());
+                handleException("Initialisation", e);
+                markFailed(e); // Mark node as failed
+                throw e; // Re-throw to signal failure
+            } finally {
+                _busy.unlock();
+            }
+        } catch (Exception e) {
+            _logger.error("Failed to initialise Python node: " + e.toString());
+            handleException("Initialisation", e);
+            markFailed(e); // Mark node as failed
+            throw e; // Re-throw to signal failure
+        }
+    }
+
+    /**
+     * Mark the node as failed with the given exception.
+     */
+    private void markFailed(Exception e) {
+        // Implementation depends on BaseDynamicNode's API
+        // If there's a setFailed method in the parent class, you'd call it here
+        // Otherwise implement necessary failure handling logic
+        _logger.error("Node marked as failed: " + e.getMessage());
+    }
+
+    /**
+     * Creates and configures the GraalVM context.
+     */
+    private void createContext() {
+        _logger.info("Creating GraalVM Python context");
+        
+        Context.Builder contextBuilder = Context.newBuilder(PYTHON_LANGUAGE_ID)
+            .allowAllAccess(true)
+            .allowHostAccess(HostAccess.ALL)
+            .allowIO(IOAccess.ALL);
+            
+        // Additional configuration options can be set here
+        // For example, set Python paths, working directory, etc.
+            
+        _pythonContext = contextBuilder.build();
+        
+        _logger.info("GraalVM Python context created successfully");
+    }
+
+    /**
+     * Executes a Python script from a file.
+     */
+    private void executeFileScript(File scriptFile) throws IOException {
+        _logger.info("Executing script: " + scriptFile.getName());
+        Source source = Source.newBuilder(PYTHON_LANGUAGE_ID, scriptFile).build();
+        try {
+            _pythonContext.eval(source);
+        } catch (PolyglotException e) {
+            handlePolyglotException("Executing file script " + scriptFile.getName(), e);
+            throw e;
+        }
+    }
+
+    /**
+     * Executes a Python script from classpath resources.
+     */
+    private void executeResourceScript(String resourcePath, String scriptName) throws IOException {
+        _logger.info("Executing resource script: " + scriptName);
+        InputStream is = PyNode.class.getResourceAsStream(resourcePath);
+        if (is == null) {
+            throw new FileNotFoundException("Resource not found: " + resourcePath);
+        }
+        String scriptContent = readFullyFromStream(is);
+        Source source = Source.newBuilder(PYTHON_LANGUAGE_ID, scriptContent, scriptName).build();
+        try {
+            _pythonContext.eval(source);
+        } catch (PolyglotException e) {
+            handlePolyglotException("Executing resource script " + scriptName, e);
+            throw e;
+        }
+    }
+
+    /**
+     * Calls a Python function within the context.
+     * Assumes function takes no arguments and checks for existence.
+     * Returns the result as a Value or null if function doesn't exist or fails.
+     */
+    private org.graalvm.polyglot.Value executePythonFunction(String functionName) {
+        try {
+            org.graalvm.polyglot.Value func = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember(functionName);
+            if (func != null && func.canExecute()) {
+                return func.execute();
+            } else {
+                // Function doesn't exist, might be okay (e.g., optional hooks)
+                // _logger.log("Python function '" + functionName + "' not found or not executable.");
+                return null;
+            }
+        } catch (PolyglotException e) {
+            handlePolyglotException("Executing function " + functionName, e);
+            return null; // Indicate failure
+        } catch (Exception e) {
+            handleException("Executing function " + functionName, e);
+            return null;
+        }
+    }
+
+    /**
+     * Handles a PolyglotException, logging it appropriately.
+     */
+    private void handlePolyglotException(String context, PolyglotException e) {
+        _logger.error(String.format("Error %s: %s", context, e.getMessage()));
+        if (e.isGuestException()) {
+            // Log guest language stack trace if available
+            StringBuilder stackTrace = new StringBuilder();
+            for (PolyglotException.StackFrame frame : e.getPolyglotStackTrace()) {
+                stackTrace.append("\n\tat ").append(frame.toString());
+            }
+            _logger.error("Python stack trace:" + stackTrace.toString());
+        }
+        // Also log the Java stack trace for context
+        _logger.error("PolyglotException during '{}'", context, e);
+    }
+
+    /**
+     * Handles general exceptions.
+     */
+    private void handleException(String context, Exception e) {
+        String errorMsg = getStackTraceAsString(e);
+        _logger.error(String.format("Error %s: %s", context, errorMsg));
+        _logger.error("Exception during '{}'", context, e);
+    }
+
+    /**
+     * Utility method to get stack trace as string since Exceptions.stackTraceToString is not available.
+     */
+    private String getStackTraceAsString(Exception e) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        e.printStackTrace(pw);
+        return sw.toString();
+    }
+
+    /**
+     * Prepares the thread state before executing guest code (Python).
+     */
+    private void threadStateHandler() {
+        // In GraalVM, context.enter() and context.leave() manage thread association.
+        // This is often handled implicitly by execute() or eval(), but explicit
+        // management might be needed for complex async callbacks.
+        // For now, we assume implicit handling is sufficient.
+        // If explicit control is needed:
+        // _pythonContext.enter();
+        // try { ... guest code ... } finally { _pythonContext.leave(); }
+    }
+
+
+    protected void reset() {
+        // No Python-specific interpreter reset needed like with Jython.
+        // Context recreation handles reset.
+    }
+
+    protected void enable() {
+        // ManagedToolkit handles enabling its components (timers start, etc.)
+        if (_toolkit != null) {
+           // Toolkit enabling logic might be needed here if not automatic
+           // _toolkit.enable(); // If such a method exists
+        }
+    }
+
+    protected void disable() {
+        // ManagedToolkit handles disabling its components (timers stop, etc.)
+         if (_toolkit != null) {
+           // Toolkit disabling logic might be needed here if not automatic
+           // _toolkit.disable(); // If such a method exists
+        }
+    }
+
+    protected void checkReload() {
+        if (_closed || !_scriptFile.exists()) {
+            return;
+        }
+
+        long currentHash = calculateFileModifiedHash();
+
+        if (currentHash != _fileModifiedHash) {
+            _logger.info("Change detected, reloading Python node...");
+            
+            // BaseDynamicNode handles the reload process (destroy, init)
+            try {
+                destroy(); // First clean up resources
+                init();    // Then re-initialize
+            } catch (Exception e) {
+                _logger.error("Failed to reload node: " + e.getMessage());
+            }
+        }
+    }
+
+    protected void setBindings(Bindings bindings) {
+        _busy.lock();
+        try {
+            // Apply the bindings to the node
+            applyBindings(bindings);
+            
+            // After setting bindings, cache references to the Python functions
+            // needed for actions and remote event handlers.
+            _pythonFunctions.clear();
+
+            if (bindings != null && bindings.local != null) {
+                 // Cache Local Action functions
+                for (Entry<SimpleName, Binding> entry : bindings.local.actions.entrySet()) {
+                    // Get the function name - using a safe approach since definition might not exist
+                    String functionName = "local_action_" + entry.getKey().toString();
+                    cachePythonFunction(functionName);
+                }
+            }
+            if (bindings != null && bindings.remote != null) {
+                 // Cache Remote Event handler functions
+                 for (Entry<SimpleName, NodelEventInfo> entry : bindings.remote.events.entrySet()) {
+                    // The binding definition (function name) is stored within NodelEventInfo if using BindingsExtractor correctly
+                    if (entry.getValue() instanceof PyBindingInfo) {
+                        cachePythonFunction(((PyBindingInfo)entry.getValue()).getFunctionName());
+                    }
+                 }
+            }
+        } finally {
+            _busy.unlock();
+        }
+    }
+    
+    /**
+     * Applies the bindings to the node.
+     */
+    private void applyBindings(Bindings bindings) {
+        if (bindings == null) {
+            _logger.info("No bindings were specified.");
+            return;
+        }
+        
+        // Here we would register local and remote bindings, events, etc.
+        // For now, this is a placeholder
+        _logger.info("Applied {} bindings", 
+            (bindings.local != null ? 
+                (bindings.local.actions != null ? bindings.local.actions.size() : 0) +
+                (bindings.local.events != null ? bindings.local.events.size() : 0) : 0) +
+            (bindings.remote != null ? 
+                (bindings.remote.actions != null ? bindings.remote.actions.size() : 0) +
+                (bindings.remote.events != null ? bindings.remote.events.size() : 0) : 0)
+        );
+    }
+
+    /**
+     * Gets the Python function Value from the context and caches it.
+     */
+    private void cachePythonFunction(String functionName) {
+        if (_pythonContext == null || functionName == null || functionName.isEmpty()) {
+            return;
+        }
+        try {
+            _pythonContext.enter();
+            org.graalvm.polyglot.Value func = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember(functionName);
+            if (func != null && func.canExecute()) {
+                _pythonFunctions.put(functionName, func);
+            } else {
+                // Function doesn't exist, might be okay (e.g., optional hooks)
+                _logger.warn("Could not find or cache executable Python function: " + functionName);
+            }
+        } catch (Exception e) {
+             handleException("Caching function " + functionName, e);
+        } finally {
+            try { _pythonContext.leave(); } catch(Exception le) { /* ignore */ }
+        }
+    }
+
+    // --- Action / Event Handling --- Override methods from BaseDynamicNode ---
+
+    public void handleActionRequest(SimpleName actionName, Object arg, final ActionRequestHandler handler) {
+        if (_closed || _pythonContext == null) {
+             handler.handleActionRequest(new RuntimeException("Node is closed or not initialised"));
+             return;
+        }
+
+        String functionName = "local_action_" + actionName.toString();
+        final org.graalvm.polyglot.Value pyFunc = _pythonFunctions.get(functionName);
+
+        if (pyFunc == null || !pyFunc.canExecute()) {
+            _logger.warn("Local action function '" + functionName + "' not found or not executable.");
+            handler.handleActionRequest(new RuntimeException("Action '" + actionName + "' not implemented"));
+            return;
+        }
+
+        long seq = _funcSeqNumber.getAndIncrement();
+        String funcKey = "action:" + functionName;
+
+        // Use the callback queue to ensure execution within the node's context/thread
+        final H0 callbackRunnable = new H0() {
+            @Override
+            public void handle() {
+                long startTime = System.currentTimeMillis();
+                _logger.info("Executing local action: " + functionName);
+
+                try {
+                    _pythonContext.enter(); // Ensure thread is attached
+                    // Execute the Python function with the argument
+                    if (arg != null) {
+                        pyFunc.execute(arg);
+                    } else {
+                        pyFunc.execute();
+                    }
+                    handler.handleActionRequest(null); // Signal success
+                } catch (Exception e) {
+                    String errMsg = "Error executing action '" + actionName + "': " + e.getMessage();
+                    _logger.error(errMsg);
+                    handler.handleActionRequest(new RuntimeException(errMsg, e));
+                } finally {
+                    try { _pythonContext.leave(); } catch (Exception le) { /* ignore */ }
+                    _logger.info("Action execution completed in " + (System.currentTimeMillis() - startTime) + "ms.");
+                }
+            }
+        };
+
+        // Execute the callback handling errors
+        _callbackQueue.handle(callbackRunnable, new H1<Exception>() {
+            @Override
+            public void handle(Exception error) {
+                if (error != null) {
+                    handler.handleActionRequest(error);
+                }
+            }
+        });
+    }
+
+    public void handleEvent(SimpleName eventName, Object arg) {
+        if (_closed || _pythonContext == null)
+            return;
+
+        // For normal Python events triggered from remote events, we need to find the handler
+        // This will be retrieved from the PyBindingInfo if available
+        String remoteFunctionName = "remote_event_" + eventName.toString(); // Default naming convention
+        
+        // More sophisticated lookup might be needed here based on your binding structure
+
+        final org.graalvm.polyglot.Value pyFunc = _pythonFunctions.get(remoteFunctionName);
+        if (pyFunc == null || !pyFunc.canExecute()) {
+            _logger.warn("Remote event handler function '" + remoteFunctionName + "' not found or not executable.");
+            return;
+        }
+
+        final String functionName = remoteFunctionName;
+        
+        // Use the callback queue to ensure execution within the node's context/thread
+        final H0 callbackRunnable = new H0() {
+            @Override
+            public void handle() {
+                long startTime = System.currentTimeMillis();
+                _logger.info("Handling remote event using: " + functionName);
+
+                try {
+                    _pythonContext.enter();
+                    if (arg != null) {
+                        pyFunc.execute(arg);
+                    } else {
+                        pyFunc.execute();
+                    }
+                } catch (Exception e) {
+                    String errMsg = "Error handling event using '" + functionName + "': " + e.getMessage();
+                    _logger.error(errMsg);
+                    injectError(errMsg, new RuntimeException(errMsg, e));
+                } finally {
+                    try { _pythonContext.leave(); } catch (Exception le) { /* ignore */ }
+                    _logger.info("Event handling completed in " + (System.currentTimeMillis() - startTime) + "ms.");
+                }
+            }
+        };
+
+        // Execute the callback handling errors
+        _callbackQueue.handle(callbackRunnable, new H1<Exception>() {
+            @Override
+            public void handle(Exception error) {
+                if (error != null) {
+                    String errMsg = "Error in callback queue: " + error.getMessage();
+                    _logger.error(errMsg);
+                    injectError(errMsg, new RuntimeException(errMsg, error));
+                }
+            }
+        });
+    }
+
+    // --- Getters for Web UI / REST API --- //
+
+    /**
+     * Returns the list of Python functions detected/cached.
+     */
+    @Service(name="pythonFunctions")
+    public List<String> getPythonFunctions() {
+        _busy.lock();
+        try {
+            return new ArrayList<>(_pythonFunctions.keySet());
         } finally {
             _busy.unlock();
         }
     }
 
     /**
-     * Core logic: build a new Python context, run user scripts.
+     * Provides access to the script endpoints.
      */
-    private void applyConfig0(NodeConfig config) throws Exception {
-        boolean hasErrors = false;
-        cleanupInterpreter();
-
-        long startTime = System.nanoTime();
-        _logger.info("Initializing new Python GraalVM context...");
-
-        // 1) create the context or have it:
-        initializePythonContext();
-        _pythonFunctions.clear();
-
-        // 2) create callback queue + toolkit
-        _callbackQueue = new CallbackQueue();
-
-        // 1. Create toolkit and inject it directly
-        _toolkit = new ManagedToolkit(this)
-                .setExceptionHandler(_exceptionHandler)
-                .setCallbackHandler(_callbackQueue)
-                .attachConsole(new Console.Interface() {
-                    @Override
-                    public void warn(Object o)  { logWarning(String.valueOf(o)); }
-                    @Override
-                    public void log(Object o)   { PyNode.this.log(String.valueOf(o)); }
-                    @Override
-                    public void info(Object o)  { logInfo(String.valueOf(o)); }
-                    @Override
-                    public void error(Object o) { logError(String.valueOf(o)); }
-                });
-
-        // 2. Inject toolkit directly into Python's global namespace
-        _pythonContext.getBindings("python").putMember("_toolkit", _toolkit);
-
-        // 3. Copy and execute nodetoolkit.py
-        try (InputStream toolkitIS = PyNode.class.getResourceAsStream("nodetoolkit.py")) {
-            File toolkitFile = new File(_metaRoot, "nodetoolkit.py");
-            String newContent = Stream.readFully(toolkitIS);
-
-            // Only write if changed
-            String oldContent = toolkitFile.exists() ? Stream.tryReadFully(toolkitFile) : "";
-            if (!newContent.equals(oldContent)) {
-                Stream.writeFully(toolkitFile, newContent);
-            }
-
-            // Execute nodetoolkit.py directly
-            _pythonContext.eval(Source.newBuilder("python", newContent, "nodetoolkit.py").build());
-        }
-
-        // Provide a reference to 'this' node, if desired
-        _pythonContext.getBindings("python").putMember("_node", this);
-
-        // gather dependencies
-        List<String> dependenciesUsed = new ArrayList<>();
-        List<String> dependencies = new ArrayList<>();
-        if (config.dependencies != null) {
-            dependencies.addAll(Arrays.asList(config.dependencies));
-        } else {
-            dependencies.add("script.py");
-        }
-
-        // look for ingredient*.py or custom*.py
-        String[] rootFiles = _root.list();
-        if (rootFiles != null) {
-            Arrays.sort(rootFiles);
-            for (String f : rootFiles) {
-                if (f.startsWith("ingredient") && f.endsWith(".py")) {
-                    dependencies.add(f);
-                }
-            }
-            for (String f : rootFiles) {
-                if (f.startsWith("custom") && f.endsWith(".py")) {
-                    dependencies.add(f);
-                }
-            }
-        }
-
-        Bindings bindings = Bindings.Empty;
-        try {
-            cleanupBindings();
-
-            // evaluate each dependency
-            for (String depFile : dependencies) {
-                File pyFile = new File(_root, depFile);
-                if (!pyFile.exists()) {
-                    throw new FileNotFoundException(depFile + " is listed but missing.");
-                }
-                String content;
-                try (FileInputStream fis = new FileInputStream(pyFile)) {
-                    try (Scanner sc = new Scanner(fis, StandardCharsets.UTF_8.name())) {
-                        content = sc.useDelimiter("\\A").next();
-                    }
-                }
-                _pythonContext.eval(Source.newBuilder("python", content, depFile).build());
-                dependenciesUsed.add(depFile);
-            }
-
-            // If you want to run BindingsExtractor, do so here:
-            // bindings = BindingsExtractor.extract(_pythonContext.getBindings("python"), new ArrayList<String>());
-            bindings = Bindings.Empty; // placeholder
-
-            // apply remote + param values
-            injectRemoteBindingValues(config, bindings.remote);
-            injectParamValues(config, bindings.params);
-
-            _config = config;
-        } catch (Exception exc) {
-            hasErrors = true;
-            _errReader.inject(exc.toString());
-            _logger.warn("Bindings application failed.", exc);
-        }
-
-        applyBindings(bindings);
-        _bindings = bindings;
-
-        // attempt "main"
-        String msg;
-        if (!hasErrors) {
-            msg = String.format("(Python with scripts %s loaded in %s; calling 'main' if present...)",
-                    dependenciesUsed.isEmpty()? "[none]" : dependenciesUsed,
-                    DateTimes.formatPeriod(startTime));
-            _outReader.inject(msg);
-            _logger.info(msg);
-        } else {
-            msg = "(Loaded with errors; calling 'main' if present...)";
-            _errReader.inject(msg);
-            _logger.warn(msg);
-        }
-
-        try {
-            org.graalvm.polyglot.Value maybeMain = _pythonContext.getBindings("python").getMember("main");
-            if (maybeMain != null && maybeMain.canExecute()) {
-                maybeMain.execute();
-                _logger.info("(main completed)");
-                _outReader.inject("(main completed)");
-            } else {
-                _logger.info("(no 'main' function found)");
-            }
-            _toolkit.enable();
-
-            synchronized (_signal) {
-                _started = DateTime.now();
-                _desc = _bindings.desc;
-                _signal.notifyAll();
-            }
-        } catch (PolyglotException pe) {
-            msg = "'main' completed with errors: " + pe;
-            _logger.warn(msg);
-            _errReader.inject(msg);
-        }
+    @Service(name="script")
+    public Script getScriptService() {
+        return _script;
     }
 
     /**
-     * Clean up old context + toolkit.
+     * Provides access to the raw toolkit object (for debugging/introspection).
+     * Be cautious exposing this directly.
      */
-    private void cleanupInterpreter() {
-        if (_pythonContext != null) {
-            try {
-                org.graalvm.polyglot.Value cleanupFn =
-                        _pythonContext.getBindings("python").getMember("processCleanupFunctions");
-                if (cleanupFn != null && cleanupFn.canExecute()) {
-                    cleanupFn.execute();
-                    _logger.info("Ran '@at_cleanup' function(s).");
-                }
-            } catch (Exception exc) {
-                _logger.warn("Cleanup function call failed", exc);
-            }
-            _pythonContext.close();
-            _pythonContext = null;
-            _pythonFunctions.clear();
-            _logger.info("(cleanup complete)");
-            _outReader.inject("(cleanup complete)");
-        }
-        if (_toolkit != null) {
-            _toolkit.shutdown();
-        }
-        _callbackQueue = null;
+    @Service(name="toolkit")
+    public ManagedToolkit getToolkit() {
+        return _toolkit;
     }
 
     /**
-     * Build up local actions + events + remote actions + remote events + params
+     * Returns the Python context for this node.
+     * Used for server-side Python scripting (PySp).
      */
-    private void applyBindings(Bindings bindings) {
-        if (bindings == null) {
-            _logger.info("No bindings specified.");
-            return;
-        }
-        int countLocal = bindLocalBindings(bindings.local);
-        if (countLocal == 0) {
-            _dummyBinding = new NodelServerAction(_name.getOriginalName(), "Dummy", null);
-            _dummyBinding.registerAction(arg -> { /* no-op */ });
-        }
-        bindRemoteBindings(bindings.remote);
-        bindParams(bindings.params);
-    }
-
-    private int bindLocalBindings(LocalBindings local) {
-        if (local == null) {
-            _logger.info("No local bindings.");
-            return 0;
-        }
-        int count = 0;
-        count += bindLocalActions(local.actions);
-        count += bindLocalEvents(local.events);
-        return count;
-    }
-
-    /**
-     * For local actions.
-     */
-    private int bindLocalActions(Map<SimpleName, Binding> actions) {
-        if (actions == null) return 0;
-        StringBuilder sb = new StringBuilder();
-        for (Entry<SimpleName, Binding> e : actions.entrySet()) {
-            SimpleName actName = e.getKey();
-            Binding bd = e.getValue();
-
-            final NodelServerAction act = new NodelServerAction(_name.getOriginalName(), actName.getReducedName(), bd);
-            act.setThreadingEnvironment(_callbackQueue, null, _emitExceptionHandler);
-            act.registerAction(new ActionRequestHandler() {
-                @Override
-                public void handleActionRequest(Object arg) {
-                    addLog(DateTime.now(), LogEntry.Source.local, LogEntry.Type.action, actName, arg);
-                    _onLocalActionRequest(actName, arg);
-                }
-            });
-            addLocalAction(act);
-
-            if (sb.length() > 0) sb.append(", ");
-            sb.append("local_action_" + actName.getReducedName());
-        }
-        if (sb.length() > 0) {
-            _logger.info("Local actions: {}", sb);
-        }
-        return actions.size();
-    }
-
-    private int bindLocalEvents(Map<SimpleName, Binding> events) {
-        if (events == null) return 0;
-        StringBuilder sb = new StringBuilder();
-        for (Entry<SimpleName, Binding> e : events.entrySet()) {
-            SimpleName evtName = e.getKey();
-            Binding bd = e.getValue();
-
-            NodelServerEvent evt = new NodelServerEvent(_name.getOriginalName(), evtName.getReducedName(), bd, true);
-            evt.setThreadingEnvironment(_callbackQueue, null, _emitExceptionHandler);
-            evt.attachMonitor((ts, arg) ->
-                    addLog(ts, LogEntry.Source.local, LogEntry.Type.event, evtName, arg)
-            );
-            addLocalEvent(evt);
-
-            if (sb.length() > 0) sb.append(", ");
-            sb.append("local_event_" + evtName.getReducedName());
-        }
-        if (sb.length() > 0) {
-            _logger.info("Local events: {}", sb);
-        }
-        return events.size();
-    }
-
-    /**
-     * For local action calls.
-     */
-    protected Object _onLocalActionRequest(SimpleName name, Object arg) {
-        _logger.info("Action requested: {}", name);
-        long seqNum = _funcSeqNumber.incrementAndGet();
-        String funcName = "local_action_" + name;
-        String key = funcName + "_" + seqNum;
-
-        try {
-            synchronized (_activeFunctions) {
-                _activeFunctions.put(key, System.nanoTime());
-            }
-            if (_pythonContext == null)
-                throw new IllegalStateException("Python not ready.");
-
-            org.graalvm.polyglot.Value fn =
-                    _pythonContext.getBindings("python").getMember(funcName);
-            if (fn == null || !fn.canExecute()) {
-                String msg = "No function named '" + funcName + "'";
-                _logger.warn(msg);
-                throw new IllegalStateException(msg);
-            }
-            try {
-                if (getFunctionParamCount(fn) == 0) {
-                    return fn.execute();
-                } else {
-                    return fn.execute(arg);
-                }
-            } catch (PolyglotException pe) {
-                String m = "Action call failed - " + pe;
-                _logger.info(m);
-                _errReader.inject(m);
-                throw new RuntimeException(pe);
-            }
-        } finally {
-            synchronized (_activeFunctions) {
-                _activeFunctions.remove(key);
-            }
-        }
-    }
-
-    /**
-     * Remote bindings
-     */
-    private void bindRemoteBindings(RemoteBindings remote) {
-        if (remote == null) {
-            _logger.info("No remote bindings.");
-            return;
-        }
-        bindRemoteActions(remote.actions);
-        bindRemoteEvents(remote.events);
-    }
-
-    private void bindRemoteActions(Map<SimpleName, NodelActionInfo> actions) {
-        if (actions == null) return;
-        for (Entry<SimpleName, NodelActionInfo> e : actions.entrySet()) {
-            SimpleName alias = e.getKey();
-            NodelActionInfo info = e.getValue();
-            NodelClientAction ca = new NodelClientAction(
-                    alias,
-                    !Strings.isBlank(info.node) ? new SimpleName(info.node) : null,
-                    !Strings.isBlank(info.action) ? new SimpleName(info.action) : null
-            );
-            ca.attachMonitor(arg -> {
-                if (ca.isUnbound())
-                    addLog(DateTime.now(), LogEntry.Source.unbound, LogEntry.Type.action, alias, arg);
-                else
-                    addLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.action, alias, arg);
-            });
-            ca.attachWiredStatusChanged(st -> {
-                _logger.info("Action binding status: {} -> {}", alias.getReducedName(), st);
-                addLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.actionBinding, alias, st);
-            });
-            ca.registerActionInterest();
-            _remoteActions.put(ca.getName(), ca);
-            _logger.info("Mapped remote action '{}'", alias);
-        }
-    }
-
-    private void bindRemoteEvents(Map<SimpleName, NodelEventInfo> events) {
-        if (events == null) return;
-        StringBuilder sb = new StringBuilder();
-        for (Entry<SimpleName, NodelEventInfo> e : events.entrySet()) {
-            SimpleName alias = e.getKey();
-            NodelEventInfo ei = e.getValue();
-            if (Strings.isBlank(ei.node) || Strings.isBlank(ei.event))
-                continue;
-
-            NodelClientEvent ce = new NodelClientEvent(alias, new SimpleName(ei.node), new SimpleName(ei.event));
-            ce.setThreadingEnvironment(_callbackQueue, null, _emitExceptionHandler);
-            ce.setHandler(new NodelEventHandler() {
-                @Override
-                public void handleEvent(SimpleName node, SimpleName event, Object arg) {
-                    handleRemoteEventArrival(alias, ce, arg);
-                }
-            });
-            ce.addBindingStateHandler(st -> {
-                addLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.eventBinding, alias, st);
-                _logger.info("Event binding status: {} -> {}", alias.getReducedName(), st);
-            });
-            addRemoteEvent(ce);
-
-            if (sb.length() > 0) sb.append(", ");
-            sb.append("remote_event_" + alias.getReducedName());
-        }
-        if (sb.length() > 0) {
-            _logger.info("Remote events: {}", sb);
-        }
-    }
-
-    private void handleRemoteEventArrival(SimpleName alias, NodelClientEvent evt, Object arg) {
-        _logger.info("Remote event arrived: {}", evt.getNodelPoint());
-        addLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.event, alias, arg);
-
-        long seqNum = _funcSeqNumber.incrementAndGet();
-        String funcName = "remote_event_" + alias;
-        String key = funcName + "_" + seqNum;
-
-        synchronized (_activeFunctions) {
-            _activeFunctions.put(key, System.nanoTime());
-        }
-        try {
-            if (_pythonContext == null)
-                throw new IllegalStateException("Python not ready.");
-
-            org.graalvm.polyglot.Value fn =
-                    _pythonContext.getBindings("python").getMember(funcName);
-            if (fn == null || !fn.canExecute()) {
-                _logger.warn("No function named '{}'", funcName);
-                return;
-            }
-            if (getFunctionParamCount(fn) == 0) {
-                fn.execute();
-            } else {
-                fn.execute(arg);
-            }
-        } catch (PolyglotException pe) {
-            String m = "Remote event handling failed - " + pe;
-            _logger.info(m);
-            _errReader.inject(m);
-            throw new RuntimeException(pe);
-        } finally {
-            synchronized (_activeFunctions) {
-                _activeFunctions.remove(key);
-            }
-        }
-    }
-
-    /**
-     * For parameters
-     */
-    private void bindParams(ParameterBindings params) {
-        if (params == null) {
-            _logger.info("No parameters.");
-            return;
-        }
-        for (Entry<SimpleName, ParameterBinding> e : params.entrySet()) {
-            SimpleName nm = e.getKey();
-            ParameterBinding pb = e.getValue();
-            Object val = pb.value;
-            String paramName = "param_" + nm.getReducedName();
-            _parameters.put(nm, new ParameterEntry(nm, val));
-            _logger.info("Parameter '{}' = '{}'", paramName, val);
-        }
-    }
-
-    public class Params {
-        @Service(name="schema")
-        public Map<String,Object> getSchema() {
-            return _bindings.params.asSchema();
-        }
-        @Service(name="save")
-        public void save(@Param(name="value", isMajor=true) ParamValues pvals) throws Exception {
-            if (!_busy.tryLock())
-                throw new OperationPendingException();
-            try {
-                _config.paramValues = pvals;
-                injectParamValues(_config, _bindings.params);
-                saveConfig0(_config);
-            } finally {
-                _busy.unlock();
-            }
-        }
-        @Value(name="value", treatAsDefaultValue=true)
-        public ParamValues getValue() {
-            return _config.paramValues;
-        }
-    }
-
-    private Params _params = new Params();
-
-    @Service(name="params")
-    public Params getParams() {
-        return _params;
-    }
-
-    /**
-     * Evaluate Python expression
-     */
-    @Service(name="eval")
-    public Object eval(@Param(name="expr") final String expr, String source) throws Exception {
-        if (_pythonContext == null)
-            throw new RuntimeException("Interpreter not ready.");
-
-        final long seq = _funcSeqNumber.incrementAndGet();
-        final String key = "eval" + (Strings.isBlank(source)?"":"_"+source)+"_"+seq;
-
-        trackFunction(key);
-        try {
-            Threads.AsyncResult<Object> op = Threads.executeAsync(new Callable<Object>() {
-                @Override
-                public Object call() throws Exception {
-                    org.graalvm.polyglot.Value result =
-                            _pythonContext.eval("python", expr);
-                    return result.isNull()? null : result;
-                }
-            });
-            return op.waitForResultOrThrowException();
-        } finally {
-            untrackFunction(key);
-        }
-    }
-
-    /**
-     * Execute Python code fragment
-     */
-    @Service(name="exec")
-    public void exec(@Param(name="code") final String code, String source) throws Exception {
-        if (Strings.isBlank(code))
-            throw new IllegalArgumentException("'code' cannot be empty.");
-        if (_pythonContext == null)
-            throw new RuntimeException("Interpreter not ready.");
-
-        final long seq = _funcSeqNumber.incrementAndGet();
-        final String key = "exec" + (Strings.isBlank(source)?"":"_"+source)+"_"+seq;
-
-        trackFunction(key);
-        try {
-            Threads.AsyncResult<Void> op = Threads.executeAsync(new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
-                    _pythonContext.eval("python", code);
-                    return null;
-                }
-            });
-            op.waitForResultOrThrowException();
-        } finally {
-            untrackFunction(key);
-        }
-    }
-
-    @Service(name="restart")
-    public void restart() {
-        _logger.info("restart() called");
-        _fileModifiedHash = 0; // triggers re-init in monitorConfig
-    }
-
-    @Service(name="rename")
-    public void rename(SimpleName newName) {
-        _nodelHost.renameNode(this, newName);
-        _logger.info("Renamed to {}. Will close & restart soon.", newName);
-    }
-
-    @Service(name="update")
-    public void update(@Param(name="path") String path) {
-        if (Strings.isBlank(path))
-            throw new RuntimeException("No recipe path provided");
-        File base = _nodelHost.recipes().getRecipeFolder(path);
-        if (base == null)
-            throw new RuntimeException("Recipe not found: " + path);
-
-        Files.updateDir(base, _root);
-        _logger.info("Node updated from recipe '{}'", path);
-    }
-
-    @Service(name="remove")
-    public void remove(@Param(name="confirm") boolean confirm) {
-        if (!confirm)
-            throw new RuntimeException("'confirm' not set. Doing nothing.");
-
-        close();
-        int tries = 5;
-        for (; tries>0; tries--) {
-            Files.tryFlushDir(_root);
-            _root.delete();
-            if (!_root.exists()) break;
-            Threads.safeWait(_signal, 1000);
-        }
-        if (tries<=0) {
-            throw new RuntimeException("Tried removing node folder but it still exists. Retry manually later.");
-        }
-        _logger.info("Node deleted.");
-    }
-
-    private FilesEndPoint _files = new FilesEndPoint(_root);
-    @Service(name="files")
-    public FilesEndPoint files() {
-        return _files;
-    }
-
-    /**
-     * Fully close this node.
-     */
-    public void close() {
-        synchronized(_signal) {
-            if (_closed) return;
-            _closed = true;
-            _logger.info("Closing node...");
-            cleanupBindings();
-            cleanupInterpreter();
-            super.close();
-        }
-    }
-
-    /**
-     * Basic function concurrency tracking.
-     */
-    private void trackFunction(String key) {
-        synchronized (_activeFunctions) {
-            _activeFunctions.put(key, System.nanoTime());
-        }
-    }
-    private void untrackFunction(String key) {
-        synchronized (_activeFunctions) {
-            _activeFunctions.remove(key);
-        }
-    }
-
-    /**
-     * Simple param counting approach (always assume 1).
-     */
-    private int getFunctionParamCount(org.graalvm.polyglot.Value fn) {
-        return 1;
-    }
-
-    /**
-     * Save config to disk.
-     */
-    private void saveConfig0(NodeConfig config) throws Exception {
-        try {
-            if (config == null) return;
-            String configStr = Serialisation.serialise(config, 4);
-            Stream.writeFully(_configFile, configStr);
-            _fileModifiedHash = _configFile.lastModified() + _scriptFile.lastModified();
-            _logger.info("saveConfig completed.");
-        } catch (Exception exc) {
-            _logger.warn("saveConfig failed.", exc);
-            throw exc;
-        }
-    }
-
     public Context getPythonContext() {
         return _pythonContext;
     }
-
-    public void injectError(String source, Throwable th) {
-        String msg = source + " - " + th.toString();
-        _logger.info(msg);
-        _errReader.inject(msg);
-    }
-
+    
     /**
-     * Create a new Python context, appending _metaRoot to sys.path.
+     * Injects an error into the node's console.
+     * 
+     * @param message The error message
+     * @param exception The exception that caused the error
      */
-    private void initializePythonContext() {
-        _pythonContext = Context.newBuilder("python")
-                .allowAllAccess(true)
-                .build();
-
-        // Append the .nodel folder to sys.path so "import nodetoolkit" can find nodetoolkit.py
-        String metaPath = _metaRoot.getAbsolutePath().replace("\\", "/");
-        String snippet = String.format(
-                "import sys\n"
-                        + "if '%s' not in sys.path:\n"
-                        + "    sys.path.append('%s')\n",
-                metaPath, metaPath
-        );
-        _pythonContext.eval("python", snippet);
+    public void injectError(String message, RuntimeException exception) {
+        _logger.error(message + ": " + exception.getMessage());
+    }
+    
+    /**
+     * Evaluates a Python expression within the node's context.
+     * Used by REST API and other clients.
+     * 
+     * @param expr The Python expression to evaluate
+     * @param source A description of the source of the request (for logging)
+     * @return The result of the evaluation
+     */
+    @Service(name="eval", title="Evaluate", desc="Evaluates a Python expression.")
+    public Object eval(@Param(name="expr", title="Expression", desc="A Python expression.") final String expr, 
+                      String source) throws Exception {
+        if (_closed || _pythonContext == null)
+            throw new RuntimeException("The interpreter is not initialized or has been closed.");
+        
+        // For tracking function calls
+        final String functionKey = "eval" + (!Strings.isBlank(source) ? "_" + source : "") + "_" + _funcSeqNumber.getAndIncrement();
+        
+        try {
+            _busy.lock();
+            _logger.info("Evaluating expression: " + expr);
+            
+            try {
+                _pythonContext.enter();
+                
+                // Evaluate the Python expression and return the result
+                Source source1 = Source.newBuilder(PYTHON_LANGUAGE_ID, expr, "eval").build();
+                org.graalvm.polyglot.Value result = _pythonContext.eval(source1);
+                
+                // Convert the result to Java if possible
+                if (result.isString()) {
+                    return result.asString();
+                } else if (result.isNumber()) {
+                    return result.as(Number.class);
+                } else if (result.isBoolean()) {
+                    return result.asBoolean();
+                } else if (result.isNull()) {
+                    return null;
+                } else {
+                    // Return the raw Value object
+                    return result;
+                }
+            } catch (PolyglotException e) {
+                handlePolyglotException("Evaluating '" + expr + "'", e);
+                throw new RuntimeException("Evaluation failed: " + e.getMessage(), e);
+            } finally {
+                try { _pythonContext.leave(); } catch (Exception e) { /* ignore */ }
+            }
+        } finally {
+            _busy.unlock();
+        }
+    }
+    
+    /**
+     * Executes Python code within the node's context.
+     * 
+     * @param code The Python code to execute
+     * @param source A description of the source of the request (for logging)
+     */
+    @Service(name="exec", title="Execute", desc="Execute Python code fragment.")
+    public void exec(@Param(name="code", title="Code", desc="A Python code fragment.") final String code, 
+                    String source) throws Exception {
+        if (_closed || _pythonContext == null)
+            throw new RuntimeException("The interpreter is not initialized or has been closed.");
+        
+        if (code == null)
+            return;
+        
+        final String functionKey = "exec" + (!Strings.isBlank(source) ? "_" + source : "") + "_" + _funcSeqNumber.getAndIncrement();
+        
+        try {
+            _busy.lock();
+            _logger.info("Executing code fragment" + (source != null ? " from " + source : ""));
+            
+            try {
+                _pythonContext.enter();
+                
+                // Execute the Python code
+                Source source1 = Source.newBuilder(PYTHON_LANGUAGE_ID, code, "exec").build();
+                _pythonContext.eval(source1);
+                
+                _logger.info("Code execution completed successfully");
+            } catch (PolyglotException e) {
+                handlePolyglotException("Executing code fragment", e);
+                throw new RuntimeException("Execution failed: " + e.getMessage(), e);
+            } finally {
+                try { _pythonContext.leave(); } catch (Exception e) { /* ignore */ }
+            }
+        } finally {
+            _busy.unlock();
+        }
+    }
+    
+    /**
+     * Tracks function execution for detecting stuck callbacks.
+     */
+    private void trackFunction(String functionName) {
+        // In the GraalVM implementation, we can track function execution differently
+        // This is a placeholder that could be expanded with more sophisticated tracking
+        _logger.debug("Function execution started: {}", functionName);
+    }
+    
+    /**
+     * Removes function from tracking.
+     */
+    private void untrackFunction(String functionName) {
+        // Corresponding function to end tracking
+        _logger.debug("Function execution completed: {}", functionName);
+    }
+    
+    /**
+     * Creates a custom lock for thread synchronization.
+     * In the original Jython implementation, this worked around Jython threading issues.
+     * In the GraalVM implementation, this may not be needed but is kept for API compatibility.
+     */
+    private ReentrantLock getAReentrantLock() {
+        // In GraalVM, we don't need the complex locking mechanism used with Jython
+        // We can just use our instance lock
+        return _busy;
     }
 
     /**
-     * Called by the NodelHost when a name registration fault occurs for this node.
+     * Destroys this node, releasing all resources.
+     */
+    private void destroy() {
+        _busy.lock();
+        try {
+            if (_closed) return;
+            _closed = true; // Mark as permanently closed
+
+            _logger.info("Destroying Python node...");
+
+            // Run Python cleanup functions first (if context is still valid)
+            if (_pythonContext != null) {
+                try {
+                    _pythonContext.enter();
+                    executePythonFunction("process_cleanup_functions");
+                } catch (Exception e) {
+                    handleException("Cleanup function execution", e);
+                } finally {
+                    try { _pythonContext.leave(); } catch (Exception le) { /* ignore */ }
+                }
+            }
+
+            // Close the toolkit (stops timers, closes connections, etc.)
+            if (_toolkit != null) {
+                Stream.safeClose(_toolkit);
+                _toolkit = null;
+            }
+
+            // Close the GraalVM context
+            if (_pythonContext != null) {
+                try {
+                    _pythonContext.close(true); // true = cancel running executions
+                } catch (Exception e) {
+                    _logger.error("Error closing Python context", e);
+                }
+                _pythonContext = null;
+            }
+
+            _pythonFunctions.clear();
+            reset(); // Reset state in BaseDynamicNode
+
+            _logger.info("Python node destroyed.");
+
+        } finally {
+            _busy.unlock();
+        }
+    }
+
+    /**
+     * Calculates a hash based on modification times of relevant files.
+     */
+    private long calculateFileModifiedHash() {
+        long hash = 5381;
+        hash = (hash << 5) + hash + _root.lastModified();          // Root directory
+        hash = (hash << 5) + hash + _scriptFile.lastModified();     // script.py
+        if (_configFile != null)
+            hash = (hash << 5) + hash + _configFile.lastModified(); // nodeConfig.json
+
+        // Include any .py files in the root or lib directory
+        List<File> pyFiles = findPyFiles(_root);
+        File libDir = new File(_root, "lib");
+        if (libDir.isDirectory()) {
+             pyFiles.addAll(findPyFiles(libDir));
+        }
+        pyFiles.sort(Comparator.comparing(File::getAbsolutePath)); // Ensure consistent order
+        for (File pyFile : pyFiles) {
+            hash = (hash << 5) + hash + pyFile.lastModified();
+        }
+
+        return hash;
+    }
+
+    /**
+     * Finds Python files in a directory (non-recursive).
+     */
+    private List<File> findPyFiles(File dir) {
+        File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".py"));
+        return files != null ? Arrays.asList(files) : new ArrayList<>();
+    }
+
+    /**
+     * Utility method to read fully from stream with UTF-8 encoding.
+     */
+    private String readFullyFromStream(InputStream is) throws IOException {
+        try (java.util.Scanner scanner = new java.util.Scanner(is, "UTF-8").useDelimiter("\\A")) {
+            return scanner.hasNext() ? scanner.next() : "";
+        }
+    }
+
+    /**
+     * Logs general log.
+     */
+    protected void log(String line) {
+        addConsoleLog(DateTime.now(), ConsoleLogEntry.Console.out, line);
+    }
+
+    /**
+     * Logs an error.
+     */
+    protected void logError(String line) {
+        addConsoleLog(DateTime.now(), ConsoleLogEntry.Console.err, line);
+    }
+
+    /**
+     * Logs a warning.
+     */
+    protected void logWarning(String line) {
+        addConsoleLog(DateTime.now(), ConsoleLogEntry.Console.warn, line);
+    }
+
+    /**
+     * Logs an info event.
+     */
+    protected void logInfo(String line) {
+        addConsoleLog(DateTime.now(), ConsoleLogEntry.Console.info, line);
+    }
+
+    /**
+     * Called by NodelHost when node name registration fails.
      */
     public void handleNameRegistrationFailure(Exception exc) {
-        // Call the protected method from the superclass to handle the error notification
-        notifyOfError(exc);
-    }
-
-    public void loadConfig(NodeConfig config) throws Exception {
-        // (async load)
+        _logger.error("Node name registration failed", exc);
+        markFailed(exc);
     }
 }

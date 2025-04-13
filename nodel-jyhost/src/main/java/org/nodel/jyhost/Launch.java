@@ -520,6 +520,7 @@ public class Launch {
         // use the default package if necessary
         _logger.info("Unzipping embedded  '" + packageType + "' package...");
 
+        // Look for resource at the root of the classpath
         try (InputStream is = BootstrapConfig.class.getResourceAsStream(packageType + ".zip")) {
             if (is != null) {
                 if (!Packages.unpackZip(is, outDirectory))

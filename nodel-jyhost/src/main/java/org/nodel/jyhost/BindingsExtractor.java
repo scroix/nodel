@@ -25,6 +25,7 @@ import org.nodel.host.NodelEventInfo;
 import org.nodel.host.ParameterBinding;
 import org.nodel.host.ParameterBindings;
 import org.nodel.host.RemoteBindings;
+import org.nodel.host.PyBindingInfo;
 import org.nodel.reflection.Serialisation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -154,12 +155,16 @@ public class BindingsExtractor {
         bindings.remote.events = new LinkedHashMap<>();
         for (Entry<SimpleName, Binding> entry : remoteEvents.entrySet()) {
             Binding binding = entry.getValue();
-            NodelEventInfo event = new NodelEventInfo();
+            String functionName = "remote_event_" + entry.getKey().toString();
+            
+            // Create our custom PyBindingInfo that preserves the function name
+            org.nodel.jyhost.PyBindingInfo event = new org.nodel.jyhost.PyBindingInfo(functionName);
             event.group   = binding.group;
             event.title   = binding.title;
             event.desc    = binding.desc;
             event.caution = binding.caution;
             event.order   = binding.order;
+            
             bindings.remote.events.put(entry.getKey(), event);
         }
 
