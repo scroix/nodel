@@ -46,3 +46,6 @@ out/
 .vscode/
 *.code-workspace
 .aider*
+
+# Gradle build files
+**/build/reports/problems/
