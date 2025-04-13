@@ -160,9 +160,7 @@ public class PyNode extends BaseDynamicNode {
         super(name, root);
         _nodelHost = nodelHost;
         
-        createContext(); // Create the context internally
-        
-        // Create LineReaders for stdout and stderr
+        // Create LineReaders for stdout and stderr FIRST
         _outReader = new LineReader();
         _outReader.setHandler(new Handler.H1<String>() {
             @Override
@@ -178,6 +176,8 @@ public class PyNode extends BaseDynamicNode {
                 logError(line);
             }
         });
+        
+        createContext(); // Create the context internally
         
         // init() is called by BaseDynamicNode constructor via checkInit
     }
@@ -817,7 +817,7 @@ public class PyNode extends BaseDynamicNode {
                 _pythonContext.enter();
                 
                 // Evaluate the Python expression and return the result
-                Source source1 = Source.newBuilder(PYTHON_LANGUAGE_ID, expr, "eval").build();
+                Source source1 = Source.newBuilder(PYTHON_LANGUAGE_ID, expr, "eval").buildLiteral(); // Try as expression
                 org.graalvm.polyglot.Value result = _pythonContext.eval(source1);
                 
                 // Convert the result to Java if possible
@@ -856,8 +856,10 @@ public class PyNode extends BaseDynamicNode {
         if (_closed || _pythonContext == null)
             throw new RuntimeException("The interpreter is not initialized or has been closed.");
         
-        if (code == null)
-            return;
+        if (code == null || code.trim().isEmpty()) {
+            _logger.debug("Empty code fragment received in exec.");
+            return; // Nothing to execute
+        }
         
         final String functionKey = "exec" + (!Strings.isBlank(source) ? "_" + source : "") + "_" + _funcSeqNumber.getAndIncrement();
         
@@ -868,11 +870,62 @@ public class PyNode extends BaseDynamicNode {
             try {
                 _pythonContext.enter();
                 
-                // Execute the Python code
-                Source source1 = Source.newBuilder(PYTHON_LANGUAGE_ID, code, "exec").build();
-                _pythonContext.eval(source1);
-                
-                _logger.info("Code execution completed successfully");
+                // REPL-like behavior: Try evaluating as an expression first.
+                boolean evaluated = false;
+                try {
+                    _logger.debug("Trying to evaluate as expression (literal): [{}]", code);
+                    Source exprSource = Source.newBuilder(PYTHON_LANGUAGE_ID, code, source).buildLiteral(); // Try as expression
+                    org.graalvm.polyglot.Value result = _pythonContext.eval(exprSource);
+                    _logger.debug("Evaluation as expression succeeded.");
+
+                    // If eval succeeded and result is not null/void, print it.
+                    if (result != null && !result.isNull()) {
+                        // Convert result to string safely
+                        String resultStr;
+                        try {
+                            if (result.isString()) {
+                                resultStr = result.asString();
+                            } else if (result.isHostObject()) {
+                                resultStr = result.asHostObject().toString();
+                            } else if (result.isNumber()) {
+                                resultStr = result.as(Number.class).toString();
+                            } else if (result.isBoolean()) {
+                                resultStr = result.asBoolean() ? "true" : "false";
+                            } else {
+                                resultStr = result.toString(); // Fallback
+                            }
+                        } catch (Exception e) {
+                            resultStr = "<Error converting result to string: " + e.getMessage() + ">";
+                        }
+
+                        // Write to the node's output stream (which goes to LineReader -> log)
+                        _outReader.write(resultStr + "\n"); 
+                        _outReader.flush(); // Ensure output is visible
+                    }
+                    evaluated = true; // Mark as successfully evaluated
+
+                } catch (PolyglotException pe) {
+                    // Check if it's a SyntaxError suggesting it's not an expression
+                    if (pe.isSyntaxError()) { 
+                        _logger.debug("Eval as expression failed (SyntaxError), will try as statement: {}", code);
+                        // It failed as an expression, so let's proceed to execute it as a statement block.
+                        evaluated = false; 
+                    } else {
+                        // Different error during evaluation, rethrow it.
+                        _logger.error("Eval as expression failed (Non-SyntaxError): {}", pe.getMessage());
+                        handlePolyglotException("Evaluating expression in exec", pe);
+                        throw new RuntimeException("Evaluation failed: " + pe.getMessage(), pe); 
+                    }
+                }
+
+                // If it wasn't successfully evaluated as an expression, execute it as a statement block.
+                if (!evaluated) {
+                    _logger.debug("Executing code fragment as statement: {}", code);
+                    // Use the original source name for statement execution
+                    _pythonContext.eval(Source.newBuilder(PYTHON_LANGUAGE_ID, code, source).build()); // Execute as statement
+                    _logger.debug("Execution as statement finished.");
+                }
+ 
             } catch (PolyglotException e) {
                 handlePolyglotException("Executing code fragment", e);
                 throw new RuntimeException("Execution failed: " + e.getMessage(), e);
