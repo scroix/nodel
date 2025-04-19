@@ -396,7 +396,7 @@ public class ManagedTCP implements Closeable {
             else
                 _receiveDelimiters = delims;
             
-            if (Strings.isEmpty(_receiveDelimiters))
+            if (_receiveDelimiters.isEmpty())
                 _mode = Modes.UnboundedRaw;
         }
     }
@@ -973,7 +973,7 @@ public class ManagedTCP implements Closeable {
      */
     public void request(String requestData, H1<String> responseHandler) {
         // don't bother doing anything if empty or missing
-        if (Strings.isEmpty(requestData))
+        if (requestData == null || requestData.isEmpty())
             return;
         
         queueRequest(requestData, _requestTimeout, responseHandler);
@@ -1151,7 +1151,7 @@ public class ManagedTCP implements Closeable {
      */
     public void send(String data) {
         byte[] buffer = prepareBuffer(data);
-
+        
         QueuedRequest request = new QueuedRequest(buffer, data, 0, null);
 
         doQueueRequest(request);
@@ -1161,7 +1161,7 @@ public class ManagedTCP implements Closeable {
      * Prepares a buffer for sending, null if it's not sendable.
      */
     private byte[] prepareBuffer(String data) {
-        if (Strings.isEmpty(data))
+        if (data == null || data.isEmpty())
             return null;
         
         // (data will be at least 1 character in length)
@@ -1282,7 +1282,7 @@ public class ManagedTCP implements Closeable {
      * Drops this socket; may trigger a reconnect.
      */
     public void drop() {
-        synchronized (_lock) {
+        synchronized(_lock) {
             if (_shutdown)
                 return;
 
@@ -1319,7 +1319,7 @@ public class ManagedTCP implements Closeable {
      * Creates an unresolved socket address.
      */
     private static InetSocketAddress parseAndResolveDestination(String dest) {
-        if (Strings.isNullOrEmpty(dest))
+        if (dest == null || dest.isEmpty())
             throw new IllegalArgumentException("No destination has been set.");
 
         int lastIndexOfPort = dest.lastIndexOf(':');
@@ -1329,10 +1329,10 @@ public class ManagedTCP implements Closeable {
         String addrPart = dest.substring(0, lastIndexOfPort);
         String portPart = dest.substring(lastIndexOfPort + 1);
 
-        if (Strings.isNullOrEmpty(addrPart))
+        if (addrPart == null || addrPart.isEmpty())
             throw new IllegalArgumentException("'dest' is missing or empty.");
         
-        if (Strings.isNullOrEmpty(portPart))
+        if (portPart == null || portPart.isEmpty())
             throw new IllegalArgumentException("port is missing or empty.");
 
         int port;

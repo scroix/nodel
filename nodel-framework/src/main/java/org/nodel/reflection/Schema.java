@@ -113,7 +113,7 @@ public class Schema {
             
             StringBuilder desc = new StringBuilder();
             for(EnumInfo enumInfo : Reflection.getEnumInfos(klass)) {
-                if (!Strings.isNullOrEmpty(enumInfo.desc)) {
+                if (!(enumInfo.desc == null || enumInfo.desc.isEmpty())) {
                     if (desc.length() == 0)
                         desc.append("(");
                     else if(desc.length() > 0)
@@ -123,7 +123,7 @@ public class Schema {
                     desc.append(enumInfo.desc);
                 }
             }
-            if (desc.length() > 0) {
+            if (!(desc == null || desc.isEmpty())) {
                 desc.append(")");
                 
                 Object currentDesc = schema.get("desc");
@@ -358,7 +358,7 @@ public class Schema {
                 schema.put("enum", suggestions);
 
             String desc = value.desc;
-            if (!Strings.isNullOrEmpty(desc))
+            if (!(desc == null || desc.isEmpty()))
                 schema.put("desc", desc);
             
             boolean advanced = value.advanced;
@@ -366,7 +366,7 @@ public class Schema {
                 schema.put("advanced", advanced);
             
             String format = value.format;
-            if (!Strings.isNullOrEmpty(format))
+            if (!(format == null || format.isEmpty()))
                 schema.put("format", format);
             
             int minItems = value.minItems;
@@ -388,7 +388,7 @@ public class Schema {
                 schema.put("title", title);
             
             String desc = service.desc();
-            if (!Strings.isNullOrEmpty(desc))
+            if (!(desc == null || desc.isEmpty()))
                 schema.put("desc", desc);
 
             if (serviceInfo.member instanceof Method) {
@@ -403,9 +403,9 @@ public class Schema {
 						Map<String, Object> paramSchema = getSchemaObject(title, 0, paramInfo.klass, null, null);
 
 						if (paramInfo.annotation != null) {
-							if (!Strings.isNullOrEmpty(paramInfo.annotation.title()))
+							if (!(paramInfo.annotation.title() == null || paramInfo.annotation.title().isEmpty()))
 								paramSchema.put("title", paramInfo.annotation.title());
-							if (!Strings.isNullOrEmpty(paramInfo.annotation.desc()))
+							if (!(paramInfo.annotation.desc() == null || paramInfo.annotation.desc().isEmpty()))
 								paramSchema.put("desc", paramInfo.annotation.desc());
 						}
 

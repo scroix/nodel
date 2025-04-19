@@ -259,7 +259,7 @@ public class Nodel {
     public static List<NodeURL> getNodeURLs(String filter) throws IOException {
         List<NodeURL> urls = Nodel.getNodeURLs();
 
-        if (Strings.isNullOrEmpty(filter))
+        if (filter == null || filter.isEmpty())
             return urls;
 
         String lcFilter = filter.toLowerCase();
