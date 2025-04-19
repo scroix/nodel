@@ -6,6 +6,9 @@ apply plugin: 'eclipse'
 // some extended unicode is used in SimpleName
 compileJava.options.encoding = 'utf-8'
 
+// Add compiler warning flags
+compileJava.options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
+
 jar {
     from "$buildDir/output"
     archiveBaseName = 'nodel-framework'
