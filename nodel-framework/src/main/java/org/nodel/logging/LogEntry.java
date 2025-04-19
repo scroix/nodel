@@ -75,7 +75,7 @@ public class LogEntry {
         // capture thread info
         Thread currentThread = Thread.currentThread();
         String threadName = currentThread.getName();
-        this.thread = (threadName == null || threadName.isEmpty()) ? String.valueOf(currentThread.getId()) : threadName;        
+        this.thread = (threadName == null || threadName.isEmpty()) ? "unknown" : threadName;        
     }
 
     /**
