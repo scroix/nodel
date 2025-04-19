@@ -349,7 +349,7 @@ public class NodelHostHTTPD extends NanoHTTPD {
         while (current != null) {
             currentMsg.error = current.getClass().getSimpleName();
             currentMsg.message = current.getMessage();
-            if (Strings.isNullOrEmpty(currentMsg.message))
+            if (currentMsg.message == null || currentMsg.message.isEmpty())
                 currentMsg.message = current.toString();
 
             if (includeStackTrace) {

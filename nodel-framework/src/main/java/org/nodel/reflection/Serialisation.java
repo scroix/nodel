@@ -790,7 +790,7 @@ public class Serialisation {
                 for (ValueInfo fieldInfo : fieldInfos) {
                     try {
                     	String key = fieldInfo.name;
-                        if (Strings.isNullOrEmpty(key))
+                        if (key == null || key.isEmpty())
                             key = fieldInfo.member.getName();
 
                         if (excludePasswords) {

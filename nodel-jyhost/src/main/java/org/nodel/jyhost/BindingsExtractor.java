@@ -16,7 +16,6 @@ import java.util.Set;
 import java.util.Map.Entry;
 
 import org.nodel.SimpleName;
-import org.nodel.Strings;
 import org.nodel.host.Binding;
 import org.nodel.host.Bindings;
 import org.nodel.host.LocalBindings;
@@ -212,7 +211,7 @@ public class BindingsExtractor {
                     // If it's a string, it might be JSON or a simple title
                     if (definition.isString()) {
                         String asText = definition.asString();
-                        if (!Strings.isNullOrEmpty(asText)) {
+                        if (!(asText == null || asText.isEmpty())) {
                             if (asText.trim().startsWith("{")) {
                                 // Parse as JSON
                                 binding = (Binding) Serialisation.coerceFromJSON(Binding.class, asText);
@@ -265,7 +264,7 @@ public class BindingsExtractor {
         }
 
         // If no title is set, give it the reduced name
-        if (Strings.isNullOrEmpty(binding.title)) {
+        if (binding.title == null || binding.title.isEmpty()) {
             binding.title = bindingName.getReducedName();
         }
 
