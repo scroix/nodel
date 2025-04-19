@@ -185,11 +185,6 @@ tasks.named('distZip') {
 }
 
 graalPy {
-    // List any Python packages you need
-    packages = ["termcolor==2.2"] // Example package
-    
-    // Optional: customize resource location
-    // resourceDirectory = "GRAALPY-VFS/${project.group}/${project.name}"
-    // OR use external directory instead of virtual filesystem
-    // externalDirectory = file("$buildDir/python-resources")
+    packages = ["termcolor==2.2"] // Just an example package
+    resourceDirectory = "GRAALPY-VFS/${project.group}/${project.name}"
 }

@@ -69,6 +69,7 @@ import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.io.IOAccess;
+import org.graalvm.python.embedding.GraalPyResources;
 
 /**
  * Represents a Python-enabled Node under GraalVM (replacing Jython).
@@ -162,20 +163,7 @@ public class PyNode extends BaseDynamicNode {
         
         // Create LineReaders for stdout and stderr FIRST
         _outReader = new LineReader();
-        _outReader.setHandler(new Handler.H1<String>() {
-            @Override
-            public void handle(String line) {
-                log(line);
-            }
-        });
-        
         _errReader = new LineReader();
-        _errReader.setHandler(new Handler.H1<String>() {
-            @Override
-            public void handle(String line) {
-                logError(line);
-            }
-        });
         
         createContext(); // Create the context internally
         
@@ -302,6 +290,16 @@ public class PyNode extends BaseDynamicNode {
                 _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
                 _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
 
+                try {
+                    // Import your toolkit module from the VFS
+                    _pythonContext.eval(PYTHON_LANGUAGE_ID, 
+                        "import org.nodel.jyhost.nodetoolkit as _nodel_api");
+                    _logger.info("Successfully loaded nodetoolkit module");
+                } catch (Exception e) {
+                    _logger.error("Failed to load nodetoolkit module", e);
+                    throw e;
+                }
+
                 // Set up the Python environment (e.g., execute bootstrap code)
                 if (_scriptFile.exists()) {
                     executeFileScript(_scriptFile);
@@ -360,15 +358,16 @@ public class PyNode extends BaseDynamicNode {
     /**
      * Creates and configures the GraalVM context.
      */
-    private void createContext() {
-        _logger.info("Creating GraalVM Python context for node {}", getName());
-        
-        // Create OutputStream wrappers for LineReaders (Writer)
-        OutputStream outStream = new OutputStream() {
+    private Context createContext() {
+        // Ensure LineReaders are initialized first
+        _outReader = new LineReader();
+        _errReader = new LineReader();
+
+        // Create the stdout/stderr wrapper
+        OutputStream stdoutAndStderrWrapper = new OutputStream() {
             @Override
             public void write(int b) throws IOException {
-                // Simple byte-to-char conversion (assuming UTF-8)
-                _outReader.write(new char[]{(char)b});
+                _outReader.write(new char[]{(char)b}); 
             }
             @Override
             public void write(byte[] b, int off, int len) throws IOException {
@@ -376,32 +375,21 @@ public class PyNode extends BaseDynamicNode {
             }
         };
 
-        OutputStream errStream = new OutputStream() {
-            @Override
-            public void write(int b) throws IOException {
-                _errReader.write(new char[]{(char)b});
-            }
-            @Override
-            public void write(byte[] b, int off, int len) throws IOException {
-                 _errReader.write(new String(b, off, len, StandardCharsets.UTF_8));
-            }
-        };
+        _logger.info("Creating GraalVM Python context for node '{}'", getName());
 
-        // Simplest context creation for now
-        // TODO: Consider sharing the Engine across contexts for performance.
-        Context.Builder contextBuilder = Context.newBuilder(PYTHON_LANGUAGE_ID)
-            .allowAllAccess(true)
-            .allowHostAccess(HostAccess.ALL) // Be cautious with host access
-            .allowIO(IOAccess.ALL)         // Allow file system and network access
-            .out(outStream) // Redirect stdout via wrapper
-            .err(errStream); // Redirect stderr via wrapper
+        try {
+            // This will automatically pick up the resourceDirectory from your Gradle config
+            _pythonContext = GraalPyResources.contextBuilder()
+                .allowAllAccess(true)
+                .out(stdoutAndStderrWrapper)
+                .err(stdoutAndStderrWrapper)
+                .build();
             
-        // Add options like Python path if necessary
-        // contextBuilder.option("python.PythonPath", "path/to/libs");
-            
-        _pythonContext = contextBuilder.build(); // Assign the new context
-        
-        _logger.info("GraalVM Python context created successfully for node {}", getName());
+            return _pythonContext;
+        } catch (Exception e) {
+            _logger.error("Failed to create GraalVM Python context", e);
+            throw new RuntimeException("Context creation failed", e);
+        }
     }
 
     /**
