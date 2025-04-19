@@ -15,6 +15,7 @@ import java.io.FileInputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -239,6 +240,7 @@ public class PyNode extends BaseDynamicNode {
         try {
             if (_closed) return; // Do not re-init if permanently closed
 
+            _outReader.inject("Initialising Python node...");
             _logger.info("Initialising Python node...");
 
             // Locate script file
@@ -263,6 +265,11 @@ public class PyNode extends BaseDynamicNode {
                 _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
                 _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
 
+                // Inject startup message into the web console
+                String msg = "Initialising new Python interpreter...";
+                _outReader.inject(msg);
+                _logger.info(msg);
+
                 // Set up the Python environment (e.g., execute bootstrap code)
                 if (_scriptFile.exists()) {
                     executeFileScript(_scriptFile);
@@ -284,6 +291,7 @@ public class PyNode extends BaseDynamicNode {
                 _fileModifiedHash = calculateFileModifiedHash();
 
                 _logger.info("Python node initialised.");
+                _outReader.inject("Python node initialised.");
                 
                 // Mark as successfully initialized by setting the description
                 synchronized (_signal) {
@@ -294,6 +302,7 @@ public class PyNode extends BaseDynamicNode {
                 
             } catch (Exception e) {
                 _logger.error("Failed to initialise Python node: " + e.toString());
+                _outReader.inject("Failed to initialise Python node: " + e.toString());
                 handleException("Initialisation", e);
                 markFailed(e); // Mark node as failed
                 throw e; // Re-throw to signal failure
@@ -302,6 +311,7 @@ public class PyNode extends BaseDynamicNode {
             }
         } catch (Exception e) {
             _logger.error("Failed to initialise Python node: " + e.toString());
+            _outReader.inject("Failed to initialise Python node: " + e.toString());
             handleException("Initialisation", e);
             markFailed(e); // Mark node as failed
             throw e; // Re-throw to signal failure
@@ -340,27 +350,9 @@ public class PyNode extends BaseDynamicNode {
             }
         });
 
-        // Create separate streams for stdout and stderr
-        OutputStream stdoutStream = new OutputStream() {
-            @Override
-            public void write(int b) throws IOException {
-                _outReader.write(new char[]{(char)b});
-            }
-            @Override
-            public void write(byte[] b, int off, int len) throws IOException {
-                _outReader.write(new String(b, off, len, StandardCharsets.UTF_8));
-            }
-        };
-        OutputStream stderrStream = new OutputStream() {
-            @Override
-            public void write(int b) throws IOException {
-                _errReader.write(new char[]{(char)b});
-            }
-            @Override
-            public void write(byte[] b, int off, int len) throws IOException {
-                _errReader.write(new String(b, off, len, StandardCharsets.UTF_8));
-            }
-        };
+        // Create separate streams for stdout and stderr using proper line buffering
+        OutputStream stdoutStream = makeStream(_outReader);
+        OutputStream stderrStream = makeStream(_errReader);
 
         _logger.info("Creating GraalVM Python context for node '{}'", getName());
 
@@ -375,6 +367,29 @@ public class PyNode extends BaseDynamicNode {
             _logger.error("Failed to create GraalVM Python context", e);
             throw new RuntimeException("Context creation failed", e);
         }
+    }
+
+    /**
+     * Creates a line-buffered OutputStream that injects complete lines into the given LineReader.
+     */
+    private OutputStream makeStream(LineReader lr) {
+        return new OutputStream() {
+            private final ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            @Override public synchronized void write(int b) throws IOException {
+                if (b == '\n') {
+                    lr.inject(buf.toString(StandardCharsets.UTF_8));
+                    buf.reset();
+                } else {
+                    buf.write(b);
+                }
+            }
+            @Override public void flush() throws IOException {
+                if (buf.size() > 0) {
+                    lr.inject(buf.toString(StandardCharsets.UTF_8));
+                    buf.reset();
+                }
+            }
+        };
     }
 
     /**
