@@ -472,7 +472,16 @@ public abstract class NanoHTTPD {
                     String methodName = input.getMethod().name();
 
                     Properties params = new Properties();
-                    params.putAll(input.getParms()); // input.getParameters();
+                    // Adapted for getParameters(): Map<String, List<String>>
+                    Map<String, List<String>> paramMap = input.getParameters();
+                    if (paramMap != null) {
+                        for (Map.Entry<String, List<String>> entry : paramMap.entrySet()) {
+                            List<String> values = entry.getValue();
+                            if (values != null && !values.isEmpty()) {
+                                params.put(entry.getKey(), values.get(0));
+                            }
+                        }
+                    }
 
                     Properties headers = new Properties();
                     headers.putAll(input.getHeaders());
