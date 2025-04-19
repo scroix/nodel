@@ -126,6 +126,9 @@ shadowJar {
 
 // Configure JVM arguments for the run task to handle JPMS restrictions
 run {
+
+    standardInput = System.in
+
     jvmArgs = [
         '--add-opens=java.base/jdk.internal.misc=jdk.graal.compiler',
         '--add-opens=java.base/jdk.internal.module=jdk.graal.compiler',
@@ -156,7 +159,7 @@ tasks.register('unversioned', Copy) {
 graalvmNative {
 
     agent {
-        enabled = true
+        defaultMode = 'conditional'
     }
     binaries {
         main {

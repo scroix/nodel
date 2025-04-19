@@ -42,7 +42,23 @@ gradlew build
 
 ---
 
-**Full example using a clean Linux environment¹**
+## Running for Development/Testing (Without Full Build)
+
+To run the application directly for development or testing purposes without creating a standalone JAR file, you can use the Gradle `run` task. This compiles the necessary code and executes the application using the configured Java toolchain (currently Java 21 via GraalVM).
+
+From the project root directory (`nodel`), execute:
+
+```bash
+./gradlew :nodel-jyhost:run
+```
+
+The application will start, print its status messages (including the web interface URL if applicable), and wait for you to press `Enter` in the console to initiate a shutdown.
+
+This method is useful for quick testing cycles as it avoids the overhead of building the full distributable package.
+
+---
+
+**Full example using clean Linux environment¹**
 
 ```bash
 # download and extract Java JDK 11
