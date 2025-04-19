@@ -853,27 +853,33 @@ public class PyNode extends BaseDynamicNode {
 
                     // If eval succeeded and result is not null/void, print it.
                     if (result != null && !result.isNull()) {
-                        // Convert result to string safely
-                        String resultStr;
-                        try {
-                            if (result.isString()) {
-                                resultStr = result.asString();
-                            } else if (result.isHostObject()) {
-                                resultStr = result.asHostObject().toString();
-                            } else if (result.isNumber()) {
-                                resultStr = result.as(Number.class).toString();
-                            } else if (result.isBoolean()) {
-                                resultStr = result.asBoolean() ? "true" : "false";
-                            } else {
-                                resultStr = result.toString(); // Fallback
+                        // Filter out module objects using GraalVM metadata
+                        org.graalvm.polyglot.Value meta = result.getMetaObject();
+                        if (meta != null && "module".equals(meta.getMetaSimpleName())) {
+                            // Skip printing module objects
+                        } else {
+                            // Convert result to string safely
+                            String resultStr;
+                            try {
+                                if (result.isString()) {
+                                    resultStr = result.asString();
+                                } else if (result.isHostObject()) {
+                                    resultStr = result.asHostObject().toString();
+                                } else if (result.isNumber()) {
+                                    resultStr = result.as(Number.class).toString();
+                                } else if (result.isBoolean()) {
+                                    resultStr = result.asBoolean() ? "true" : "false";
+                                } else {
+                                    resultStr = result.toString(); // Fallback
+                                }
+                            } catch (Exception e) {
+                                resultStr = "<Error converting result to string: " + e.getMessage() + ">";
                             }
-                        } catch (Exception e) {
-                            resultStr = "<Error converting result to string: " + e.getMessage() + ">";
-                        }
 
-                        // Write to the node's output stream (which goes to LineReader -> log)
-                        _outReader.write(resultStr + "\n"); 
-                        _outReader.flush(); // Ensure output is visible
+                            // Write to the node's output stream (which goes to LineReader -> log)
+                            _outReader.write(resultStr + "\n"); 
+                            _outReader.flush(); // Ensure output is visible
+                        }
                     }
                     evaluated = true; // Mark as successfully evaluated
 
