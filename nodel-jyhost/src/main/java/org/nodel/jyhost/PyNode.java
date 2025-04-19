@@ -455,12 +455,16 @@ public class PyNode extends BaseDynamicNode {
     private void handlePolyglotException(String context, PolyglotException e) {
         _logger.error(String.format("Error %s: %s", context, e.getMessage()));
         if (e.isGuestException()) {
-            // Log guest language stack trace if available
+            // Log guest language stack trace if available, with more formatting
             StringBuilder stackTrace = new StringBuilder();
+            stackTrace.append("\n--- Python stack trace (guest) ---\n");
             for (PolyglotException.StackFrame frame : e.getPolyglotStackTrace()) {
-                stackTrace.append("\n\tat ").append(frame.toString());
+                stackTrace.append("  at ").append(frame.toString()).append("\n");
             }
-            _logger.error("Python stack trace:" + stackTrace.toString());
+            stackTrace.append("--- End Python stack trace ---");
+            _logger.error(stackTrace.toString());
+            // Also inject to web console for visibility
+            _outReader.inject(stackTrace.toString());
         }
         // Also log the Java stack trace for context
         _logger.error("PolyglotException during '{}'", context, e);
@@ -471,7 +475,9 @@ public class PyNode extends BaseDynamicNode {
      */
     private void handleException(String context, Exception e) {
         String errorMsg = getStackTraceAsString(e);
-        _logger.error(String.format("Error %s: %s", context, errorMsg));
+        String formatted = String.format("--- Java exception during %s ---\n%s--- End Java exception ---", context, errorMsg);
+        _logger.error(formatted);
+        _outReader.inject(formatted);
         _logger.error("Exception during '{}'", context, e);
     }
 
