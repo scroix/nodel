@@ -558,6 +558,19 @@
                                     "title": "Argument timestamp",
                                     "format": "date-time"
                                 },
+                                "bindingState": {
+                                    "type": "string",
+                                    "required": true,
+                                    "title": "Binding state",
+                                    "enum": [
+                                        "Empty",
+                                        "ResolutionFailure",
+                                        "Resolved",
+                                        "Wired",
+                                        "MissingActionPoint",
+                                        "MissingEventPoint"
+                                    ]
+                                },
                                 "closed": {
                                     "type": "boolean",
                                     "required": true
@@ -1389,6 +1402,19 @@
                                     "title": "Argument timestamp",
                                     "format": "date-time"
                                 },
+                                "bindingState": {
+                                    "type": "string",
+                                    "required": true,
+                                    "title": "Binding state",
+                                    "enum": [
+                                        "Empty",
+                                        "ResolutionFailure",
+                                        "Resolved",
+                                        "Wired",
+                                        "MissingActionPoint",
+                                        "MissingEventPoint"
+                                    ]
+                                },
                                 "closed": {
                                     "type": "boolean",
                                     "required": true
@@ -1498,6 +1524,17 @@
                 }
             }
         },
+        "recipes": {
+            "type": "object",
+            "order": 1,
+            "title": "Recipes",
+            "desc": "Recipes that new nodes can be based on",
+            "services": {"list": {
+                "type": "array",
+                "desc": "Lists the available recipes, including ones already being hosted ('self/...' paths)",
+                "items": {"type": "object"}
+            }}
+        },
         "allNodes": {
             "type": "array",
             "order": 5,
@@ -1546,11 +1583,12 @@
                     "title": "Hostname",
                     "desc": "The name of the host."
                 },
-                "httpAddress": {
-                    "type": "string",
+                "httpAddresses": {
+                    "type": "array",
                     "required": true,
                     "title": "HTTP address",
-                    "desc": "The address of the HTTP server."
+                    "desc": "The address of the HTTP server.",
+                    "items": {"type": "string"}
                 },
                 "maxMemory": {
                     "type": "integer",
@@ -1568,7 +1606,7 @@
                     "type": "string",
                     "required": true,
                     "title": "Start time",
-                    "desc": "When this service was started.",
+                    "desc": "When this service was started according to system's wall clock.",
                     "format": "date-time"
                 },
                 "systemProperties": {
@@ -1583,6 +1621,12 @@
                     "required": true,
                     "title": "Total memory",
                     "desc": "Total memory (in bytes) as reported by Java; not necessarily stable."
+                },
+                "uptime": {
+                    "type": "integer",
+                    "required": true,
+                    "title": "Uptime",
+                    "desc": "Uptime in milliseconds unaffected by wall clock accuracy."
                 },
                 "vmArgs": {
                     "type": "array",
@@ -1659,16 +1703,37 @@
             }},
             "items": {"type": "object"}
         },
+        "nodeURLsForNode": {
+            "type": "array",
+            "order": 6,
+            "title": "Node URLs",
+            "desc": "Returns the addresses of all advertised nodes.",
+            "takes": {"name": {
+                "type": "string",
+                "format": "SimpleName",
+                "title": "Node URLs",
+                "order": 0
+            }},
+            "items": {"type": "object"}
+        },
         "newNode": {
             "type": "boolean",
             "order": 7,
             "title": "New node",
             "desc": "Creates a new node.",
-            "takes": {"value": {
-                "type": "string",
-                "title": "New node",
-                "order": 0
-            }}
+            "takes": {
+                "base": {
+                    "type": "string",
+                    "title": "New node",
+                    "order": 0
+                },
+                "value": {
+                    "type": "string",
+                    "format": "SimpleName",
+                    "title": "New node",
+                    "order": 1
+                }
+            }
         }
     }
 }
