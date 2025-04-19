@@ -566,9 +566,14 @@ public class Reflection {
      */
     public static Object createDefaultInstance(Class<?> klass) {
         try {
-            Object result = klass.newInstance();
-            
+            Constructor<?> constructor = klass.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            Object result = constructor.newInstance();
             return result;
+        } catch (NoSuchMethodException e) {
+            return null;
+        } catch (InvocationTargetException e) {
+            return null;
         } catch (IllegalArgumentException e) {
             return null;
         } catch (InstantiationException e) {

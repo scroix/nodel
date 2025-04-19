@@ -34,6 +34,7 @@ package org.nanohttpd.util;
  */
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -67,7 +68,10 @@ public class ServerRunner {
 
     public static <T extends NanoHTTPD> void run(Class<T> serverClass) {
         try {
-            executeInstance(serverClass.newInstance());
+            Constructor<T> constructor = serverClass.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            T server = constructor.newInstance();
+            executeInstance(server);
         } catch (Exception e) {
             ServerRunner.LOG.log(Level.SEVERE, "Could not create server", e);
         }
