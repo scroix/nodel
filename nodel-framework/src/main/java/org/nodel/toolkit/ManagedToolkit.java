@@ -1069,6 +1069,7 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
      * @deprecated Use close() instead
      */
     @HostAccess.Export
+    @Deprecated
     public void shutdown() throws IOException {
         close();
     }
