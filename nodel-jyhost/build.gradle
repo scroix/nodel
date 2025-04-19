@@ -126,19 +126,16 @@ shadowJar {
 
 // Configure JVM arguments for the run task to handle JPMS restrictions
 run {
-
     standardInput = System.in
 
     jvmArgs = [
-        '--add-opens=java.base/jdk.internal.misc=jdk.graal.compiler',
-        '--add-opens=java.base/jdk.internal.module=jdk.graal.compiler',
-        '--add-opens=java.base/java.lang=ALL-UNNAMED',
-        '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
-        '--add-opens=java.base/java.io=ALL-UNNAMED',
-        '--add-opens=java.base/java.util=ALL-UNNAMED',
-        '--add-opens=java.base/java.nio=ALL-UNNAMED',
-        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
-        '--enable-native-access=ALL-UNNAMED'
+            '--add-opens=java.base/java.lang=ALL-UNNAMED',
+            '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+            '--add-opens=java.base/java.io=ALL-UNNAMED',
+            '--add-opens=java.base/java.util=ALL-UNNAMED',
+            '--add-opens=java.base/java.nio=ALL-UNNAMED',
+            '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+            '--enable-native-access=ALL-UNNAMED'
     ]
 }
 
