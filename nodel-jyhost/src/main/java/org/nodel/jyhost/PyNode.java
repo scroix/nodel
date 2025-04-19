@@ -70,7 +70,6 @@ import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.io.IOAccess;
-import org.graalvm.python.embedding.GraalPyResources;
 
 /**
  * Represents a Python-enabled Node under GraalVM (replacing Jython).
@@ -158,12 +157,22 @@ public class PyNode extends BaseDynamicNode {
      */
     private File _configFile;
 
+    private static final String TOOLKIT_RESOURCE = "/org/nodel/jyhost/nodetoolkit.py";
+
     public PyNode(NodelHost nodelHost, SimpleName name, File root) throws IOException { // Remove Context parameter
         super(name, root);
         _nodelHost = nodelHost;
         
         createContext(); // Create the context internally
-        
+        try {
+            init(); // Eagerly initialize (restores original Jython behavior)
+        } catch (Exception e) {
+            if (e instanceof IOException) {
+                throw (IOException) e;
+            }
+            throw new IOException("Failed to initialize Python node", e);
+        }
+
         // init() is called by BaseDynamicNode constructor via checkInit
     }
 
@@ -255,8 +264,27 @@ public class PyNode extends BaseDynamicNode {
 
             // Initialise the toolkit for this node
             _callbackQueue = new CallbackQueue();
-            _toolkit = new ManagedToolkit(this);
-            
+            _toolkit = new ManagedToolkit(this)
+                .setCallbackHandler(_callbackQueue)
+                .attachConsole(new Console.Interface() {
+                    @Override
+                    public void warn(Object obj) {
+                        logWarning(String.valueOf(obj));
+                    }
+                    @Override
+                    public void log(Object obj) {
+                        PyNode.this.log(String.valueOf(obj));
+                    }
+                    @Override
+                    public void info(Object obj) {
+                        logInfo(String.valueOf(obj));
+                    }
+                    @Override
+                    public void error(Object obj) {
+                        logError(String.valueOf(obj));
+                    }
+                });
+
             try {
                 // First, clean up any previous bindings 
                 cleanupBindings();
@@ -265,12 +293,10 @@ public class PyNode extends BaseDynamicNode {
                 _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
                 _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
 
-                // Inject startup message into the web console
-                String msg = "Initialising new Python interpreter...";
-                _outReader.inject(msg);
-                _logger.info(msg);
+                // Load and execute the toolkit bootstrap script BEFORE any user script
+                loadToolkit();
 
-                // Set up the Python environment (e.g., execute bootstrap code)
+                // Now run the user script (script.py)
                 if (_scriptFile.exists()) {
                     executeFileScript(_scriptFile);
                 }
@@ -319,6 +345,34 @@ public class PyNode extends BaseDynamicNode {
     }
 
     /**
+     * Loads and executes the toolkit bootstrap script (nodetoolkit.py) before user scripts.
+     */
+    private void loadToolkit() throws IOException {
+        // Load toolkit from classpath (absolute path is more reliable)
+        try (InputStream is = PyNode.class.getResourceAsStream(TOOLKIT_RESOURCE)) {
+            if (is == null) {
+                throw new FileNotFoundException("Required resource not found: " + TOOLKIT_RESOURCE);
+            }
+            // Extract to node's meta directory
+            File toolkitFile = new File(_metaRoot, "nodetoolkit.py");
+            toolkitFile.getParentFile().mkdirs(); // Ensure directory exists
+            Stream.writeFully(toolkitFile, readFullyFromStream(is));
+            _logger.info("Extracted toolkit script to: {}", toolkitFile.getAbsolutePath());
+            // Execute it
+            Source source = Source.newBuilder(PYTHON_LANGUAGE_ID, toolkitFile).build();
+            _pythonContext.eval(source);
+            _logger.info("Executed toolkit bootstrap script");
+            _outReader.inject("Executed toolkit bootstrap script");
+        } catch (org.graalvm.polyglot.PolyglotException e) {
+            handlePolyglotException("Loading toolkit script", e);
+            throw new IOException("Failed to execute toolkit script", e);
+        } catch (Exception e) {
+            handleException("Loading toolkit script", e);
+            throw new IOException("Failed to execute toolkit script", e);
+        }
+    }
+
+    /**
      * Mark the node as failed with the given exception.
      */
     private void markFailed(Exception e) {
@@ -357,7 +411,8 @@ public class PyNode extends BaseDynamicNode {
         _logger.info("Creating GraalVM Python context for node '{}'", getName());
 
         try {
-            _pythonContext = GraalPyResources.contextBuilder()
+            // Use standard Context.newBuilder instead of GraalPyResources.contextBuilder
+            _pythonContext = Context.newBuilder("python")
                 .allowAllAccess(true)
                 .out(stdoutStream)
                 .err(stderrStream)
@@ -971,10 +1026,10 @@ public class PyNode extends BaseDynamicNode {
     private void destroy() {
         _busy.lock();
         try {
+            _outReader.inject("Destroying Python node...");
+            _logger.info("Destroying Python node...");
             if (_closed) return;
             _closed = true; // Mark as permanently closed
-
-            _logger.info("Destroying Python node...");
 
             // Run Python cleanup functions first (if context is still valid)
             if (_pythonContext != null) {
@@ -1010,7 +1065,7 @@ public class PyNode extends BaseDynamicNode {
             reset(); // Reset state in BaseDynamicNode
 
             _logger.info("Python node destroyed.");
-
+            _outReader.inject("Python node destroyed.");
         } finally {
             _busy.unlock();
         }

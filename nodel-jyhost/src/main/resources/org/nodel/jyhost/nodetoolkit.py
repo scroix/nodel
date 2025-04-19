@@ -17,89 +17,106 @@ from typing import Any, Optional, Callable, Dict, List, Union
 from importlib.abc import MetaPathFinder, Loader
 from importlib.util import spec_from_loader
 
-class JavaPackage:
-    """Represents a Java package"""
-    def __init__(self, toolkit, name):
-        self._toolkit = toolkit
-        self._name = name
+# class JavaPackage:
+#     """Represents a Java package"""
+#     def __init__(self, toolkit, name):
+#         self._toolkit = toolkit
+#         self._name = name
 
-        # Add required module attributes
-        self.__name__ = name
-        self.__package__ = name
-        self.__path__ = []  # Empty list indicates it's a package
-        self.__loader__ = None
+#         # Add required module attributes
+#         self.__name__ = name
+#         self.__package__ = name
+#         self.__path__ = []  # Empty list indicates it's a package
+#         self.__loader__ = None
 
-    def __getattr__(self, name):
-        fullname = f"{self._name}.{name}"
+#     def __getattr__(self, name):
+#         fullname = f"{self._name}.{name}"
 
-        # First try loading as a class
-        try:
-            return self._toolkit.getClass(fullname)
-        except Exception:
-            # If not a class, return a new package
-            return JavaPackage(self._toolkit, fullname)
+#         # First try loading as a class
+#         try:
+#             return self._toolkit.getClass(fullname)
+#         except Exception:
+#             # If not a class, return a new package
+#             return JavaPackage(self._toolkit, fullname)
 
-class JavaClassLoader(Loader):
-    """Loads Java classes and packages"""
-    def __init__(self, toolkit, fullname):
-        self.toolkit = toolkit
-        self.fullname = fullname
+# class JavaClassLoader(Loader):
+#     """Loads Java classes and packages"""
+#     def __init__(self, toolkit, fullname):
+#         self.toolkit = toolkit
+#         self.fullname = fullname
 
-    def create_module(self, spec):
-        # First check if it's a final class name
-        try:
-            cls = self.toolkit.getClass(self.fullname)
-            # Add Python module attributes to the class
-            cls.__name__ = self.fullname
-            cls.__package__ = self.fullname.rpartition('.')[0]
-            return cls
-        except:
-            # If not a class, create a package
-            return JavaPackage(self.toolkit, self.fullname)
+#     def create_module(self, spec):
+#         # First check if it's a final class name
+#         try:
+#             cls = self.toolkit.getClass(self.fullname)
+#             # Add Python module attributes to the class
+#             cls.__name__ = self.fullname
+#             cls.__package__ = self.fullname.rpartition('.')[0]
+#             return cls
+#         except:
+#             # If not a class, create a package
+#             return JavaPackage(self.toolkit, self.fullname)
 
-    def exec_module(self, module):
-        # Nothing to execute for Java classes/packages
-        pass
+#     def exec_module(self, module):
+#         # Nothing to execute for Java classes/packages
+#         pass
 
-class JavaImportFinder(MetaPathFinder):
-    """Finds Java packages and classes during import"""
-    def __init__(self, toolkit):
-        self.toolkit = toolkit
-        self.roots = {'org', 'java', 'com', 'javax'}
+# class JavaImportFinder(MetaPathFinder):
+#     """Finds Java packages and classes during import"""
+#     def __init__(self, toolkit):
+#         self.toolkit = toolkit
+#         self.roots = {'org', 'java', 'com', 'javax'}
 
-    def find_spec(self, fullname, path, target=None):
-        parts = fullname.split('.')
-        if parts[0] in self.roots:
-            return spec_from_loader(
-                fullname,
-                JavaClassLoader(self.toolkit, fullname)
-            )
-        return None
+#     def find_spec(self, fullname, path, target=None):
+#         parts = fullname.split('.')
+#         if parts[0] in self.roots:
+#             return spec_from_loader(
+#                 fullname,
+#                 JavaClassLoader(self.toolkit, fullname)
+#             )
+#         return None
 
-# Install the Java import hook immediately
-sys.meta_path.insert(0, JavaImportFinder(_toolkit))
+# # Install the Java import hook immediately
+# # sys.meta_path.insert(0, JavaImportFinder(_toolkit))
 
-# Now set up the console (which can now use Java classes if needed)
-class Console:
-    """Console interface for logging and user feedback"""
-    def __init__(self):
-        self._console = _toolkit.getConsole()
+# --- Compatibility shim for console module import -----------------
+import types, sys
 
+# Get the console from the toolkit for direct use
+java_console = _toolkit.getConsole() if hasattr(_toolkit, "getConsole") else None
+
+# Create an enhanced console wrapper that can handle both patterns
+class EnhancedConsole:
+    def __init__(self, java_console):
+        self._java_console = java_console
+        # Add self-reference for legacy code pattern
+        self.instance = self
     def log(self, message):
-        self._console.log(str(message))
+        self._java_console.log(str(message))
     def info(self, message):
-        self._console.info(str(message))
+        self._java_console.info(str(message))
     def warn(self, message):
-        self._console.warn(str(message))
+        self._java_console.warn(str(message))
     def error(self, message):
-        self._console.error(str(message))
+        self._java_console.error(str(message))
 
-# Create global console instance
-try:
-    console = Console()
-except Exception as e:
-    # Provide a clear error if console creation fails
-    raise RuntimeError(f"Failed to initialize Nodel console: {e}")
+# Create the wrapper instance
+console_wrapper = EnhancedConsole(java_console)
+
+# 1. Create a fake module called 'console'
+console_mod = types.ModuleType("console")
+console_mod.instance = console_wrapper  # Set wrapper as module's 'instance' attribute
+sys.modules["console"] = console_mod    # Make 'import console' work
+
+# 2. Set the global 'console' to the same wrapper
+console = console_wrapper
+
+# Make the console visible to all modules
+import builtins
+builtins.console = console_wrapper          # For direct console.info() calls
+builtins.console.instance = console_wrapper # For console.instance.info() calls
+
+print("Nodel toolkit loaded - enhanced console bridge established")
 
 # Expose version info if available
 VERSION = getattr(_toolkit, 'VERSION', 'unknown')

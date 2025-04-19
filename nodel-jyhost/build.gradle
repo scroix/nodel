@@ -49,19 +49,9 @@ dependencies {
     // ------------------------------------------------------------------
     // New GraalVM for JDK 21 dependencies for embedding polyglot Python
     // ------------------------------------------------------------------
-    // "polyglot" is the core Truffle & Polyglot APIs:
-    implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"
 
-    // "python" pulls in the GraalPy runtime so you can embed Python:
-    // (If you prefer an open-source only version, use "python-community")
-    implementation "org.graalvm.polyglot:python:${polyglotVersion}"
-
-    // If you are using the newer approach, you generally do NOT need
-    // 'org.graalvm.sdk:graal-sdk' or 'org.graalvm.truffle:truffle-api'
-    // directly anymore, as they are included transitively in 'polyglot'.
-
-    implementation "org.graalvm.python:python-embedding:${polyglotVersion}"
-}
+    implementation "org.graalvm.python:python:${polyglotVersion}"
+    implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"}
 
 // ------------------------------------------------------------------
 // Application plugin
@@ -179,9 +169,4 @@ tasks.named('distTar') {
 
 tasks.named('distZip') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-graalPy {
-    packages = ["termcolor==2.2"] // Just an example package
-    resourceDirectory = "GRAALPY-VFS/${project.group}/${project.name}"
 }
