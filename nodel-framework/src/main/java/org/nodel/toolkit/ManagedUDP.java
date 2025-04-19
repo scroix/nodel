@@ -484,12 +484,12 @@ public class ManagedUDP implements Closeable {
             	if (sourceMulticast && networkInterface != null)
             		multicastSocket.joinGroup(new InetSocketAddress(sourceSocketAddress.getAddress(), 0), networkInterface);
             	else if (sourceMulticast)
-            		multicastSocket.joinGroup(sourceSocketAddress.getAddress());
+            		multicastSocket.joinGroup(new InetSocketAddress(sourceSocketAddress.getAddress(), 0), networkInterface);
             	
             	if (destMulticast && networkInterface != null)
             		multicastSocket.joinGroup(new InetSocketAddress(destSocketAddress.getAddress(), 0), networkInterface);
             	else if (destMulticast)
-            		multicastSocket.joinGroup(destSocketAddress.getAddress());
+            		multicastSocket.joinGroup(new InetSocketAddress(destSocketAddress.getAddress(), 0), networkInterface);
             		
             } else {
             	// unicast usage
