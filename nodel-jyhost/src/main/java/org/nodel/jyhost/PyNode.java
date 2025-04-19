@@ -161,10 +161,6 @@ public class PyNode extends BaseDynamicNode {
         super(name, root);
         _nodelHost = nodelHost;
         
-        // Create LineReaders for stdout and stderr FIRST
-        _outReader = new LineReader();
-        _errReader = new LineReader();
-        
         createContext(); // Create the context internally
         
         // init() is called by BaseDynamicNode constructor via checkInit
@@ -259,29 +255,6 @@ public class PyNode extends BaseDynamicNode {
             _callbackQueue = new CallbackQueue();
             _toolkit = new ManagedToolkit(this);
             
-            // Attach a Console interface
-            _toolkit.attachConsole(new Console.Interface() {
-                @Override
-                public void info(Object obj) {
-                    logInfo(String.valueOf(obj));
-                }
-                
-                @Override
-                public void log(Object obj) {
-                    log(String.valueOf(obj));
-                }
-                
-                @Override
-                public void error(Object obj) {
-                    logError(String.valueOf(obj));
-                }
-                
-                @Override
-                public void warn(Object obj) {
-                    logWarning(String.valueOf(obj));
-                }
-            });
-            
             try {
                 // First, clean up any previous bindings 
                 cleanupBindings();
@@ -289,16 +262,6 @@ public class PyNode extends BaseDynamicNode {
                 // Inject the toolkit into the Python context
                 _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
                 _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
-
-                try {
-                    // Import your toolkit module from the VFS
-                    _pythonContext.eval(PYTHON_LANGUAGE_ID, 
-                        "import org.nodel.jyhost.nodetoolkit as _nodel_api");
-                    _logger.info("Successfully loaded nodetoolkit module");
-                } catch (Exception e) {
-                    _logger.error("Failed to load nodetoolkit module", e);
-                    throw e;
-                }
 
                 // Set up the Python environment (e.g., execute bootstrap code)
                 if (_scriptFile.exists()) {
@@ -363,28 +326,50 @@ public class PyNode extends BaseDynamicNode {
         _outReader = new LineReader();
         _errReader = new LineReader();
 
-        // Create the stdout/stderr wrapper
-        OutputStream stdoutAndStderrWrapper = new OutputStream() {
+        // IMPORTANT: Set handlers IMMEDIATELY after creation
+        _outReader.setHandler(new Handler.H1<String>() {
+            @Override
+            public void handle(String line) {
+                log(line);
+            }
+        });
+        _errReader.setHandler(new Handler.H1<String>() {
+            @Override
+            public void handle(String line) {
+                logError(line);
+            }
+        });
+
+        // Create separate streams for stdout and stderr
+        OutputStream stdoutStream = new OutputStream() {
             @Override
             public void write(int b) throws IOException {
-                _outReader.write(new char[]{(char)b}); 
+                _outReader.write(new char[]{(char)b});
             }
             @Override
             public void write(byte[] b, int off, int len) throws IOException {
-                 _outReader.write(new String(b, off, len, StandardCharsets.UTF_8));
+                _outReader.write(new String(b, off, len, StandardCharsets.UTF_8));
+            }
+        };
+        OutputStream stderrStream = new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                _errReader.write(new char[]{(char)b});
+            }
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                _errReader.write(new String(b, off, len, StandardCharsets.UTF_8));
             }
         };
 
         _logger.info("Creating GraalVM Python context for node '{}'", getName());
 
         try {
-            // This will automatically pick up the resourceDirectory from your Gradle config
             _pythonContext = GraalPyResources.contextBuilder()
                 .allowAllAccess(true)
-                .out(stdoutAndStderrWrapper)
-                .err(stdoutAndStderrWrapper)
+                .out(stdoutStream)
+                .err(stderrStream)
                 .build();
-            
             return _pythonContext;
         } catch (Exception e) {
             _logger.error("Failed to create GraalVM Python context", e);

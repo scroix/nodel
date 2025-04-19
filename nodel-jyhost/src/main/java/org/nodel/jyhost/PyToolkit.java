@@ -9,22 +9,30 @@ import org.graalvm.polyglot.Value;
 public class PyToolkit {
     
     private static Context pythonContext;
-    private static Value emptyDictClass;
-    
+    private static Value mappingProxyType;
+
+    /**
+     * A convenient immutable constant for sharing.
+     */
+    public final static Value EmptyDict;
+
     static {
         pythonContext = Context.newBuilder("python")
                               .allowAllAccess(true)
                               .build();
-                              
-        // Get MappingProxyType for immutable dicts
+
+        // Get MappingProxyType from Python's types module
         pythonContext.eval("python", "from types import MappingProxyType");
-        emptyDictClass = pythonContext.eval("python", "MappingProxyType");
+        mappingProxyType = pythonContext.eval("python", "MappingProxyType");
+
+        // Create an empty Python dictionary to pass to MappingProxyType
+        Value emptyDict = pythonContext.eval("python", "{}");
+
+        // Now create an immutable view of the empty dictionary
+        EmptyDict = mappingProxyType.newInstance(emptyDict);
+        // Alternative one-liner approach:
+        // EmptyDict = pythonContext.eval("python", "MappingProxyType({})");
     }
-    
-    /**
-     * A convenient immutable constant for sharing.
-     */
-    public final static Value EmptyDict = emptyDictClass.newInstance();
     
     /**
      * Creates a new Python context with full access
