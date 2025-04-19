@@ -977,7 +977,7 @@ public abstract class NanoHTTPD {
     }
 
     protected Response prepareFoundResponse(String uri) {
-        Response res = new Response(Status.FOUND, MIME_HTML, "<html><body>Redirected: <a href=\"" + uri + "\">" + uri + "</a></body></html>");
+        Response res = new Response(Status.REDIRECT, MIME_HTML, "<html><body>Redirected: <a href=\"" + uri + "\">" + uri + "</a></body></html>");
         res.addHeader("Location", uri);
 
         return res;
