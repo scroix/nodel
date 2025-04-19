@@ -1495,8 +1495,15 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
 
                 _node.injectLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.action, new SimpleName(arg.toString()), arg);
 
-                if (resultHandler != null)
-                    _callbackQueue.handle((H1<Object>)resultHandler, arg, _actionExceptionHandler);
+                if (resultHandler != null) {
+                    if (resultHandler instanceof H1<?>) {
+                        @SuppressWarnings("unchecked") // Safe because of instanceof check above
+                        H1<Object> handler = (H1<Object>) resultHandler;
+                        _callbackQueue.handle(handler, arg, _actionExceptionHandler);
+                    } else {
+                        _logger.warn("resultHandler is not an instance of H1<?>: {}", resultHandler.getClass());
+                    }
+                }
             }
 
         };
