@@ -49,3 +49,4 @@ out/
 
 # Gradle build files
 **/build/reports/problems/
+**/.DS_Store
