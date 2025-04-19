@@ -7,6 +7,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
+import java.net.NetworkInterface;
+import java.net.StandardSocketOptions;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Random;
@@ -436,6 +438,10 @@ public class ManagedUDP implements Closeable {
             if (!Strings.isNullOrEmpty(intfAddress))
             	intfHostAddress = InetAddress.getByName(intfAddress);
             
+            NetworkInterface networkInterface = null;
+            if (intfHostAddress != null)
+            	networkInterface = NetworkInterface.getByInetAddress(intfHostAddress);
+            
             if (sourceMulticast || destMulticast) {
             	// multicast usage
             	
@@ -448,8 +454,8 @@ public class ManagedUDP implements Closeable {
             	socket = multicastSocket;
             	
             	// always set the optional 'interface' if it's specified
-            	if (intfHostAddress != null)
-            		multicastSocket.setInterface(intfHostAddress);
+            	if (networkInterface != null)
+            		multicastSocket.setOption(StandardSocketOptions.IP_MULTICAST_IF, networkInterface);
             	
             	// it's important the source is used as the bind address if it
             	// not a multicast address itself
@@ -475,10 +481,14 @@ public class ManagedUDP implements Closeable {
             	
             	// join the multicast group(s) (wouldn't make much sense having one set on 'source' and 'dest' but
             	// they can try)
-            	if (sourceMulticast) 
+            	if (sourceMulticast && networkInterface != null)
+            		multicastSocket.joinGroup(new InetSocketAddress(sourceSocketAddress.getAddress(), 0), networkInterface);
+            	else if (sourceMulticast)
             		multicastSocket.joinGroup(sourceSocketAddress.getAddress());
             	
-            	if (destMulticast)
+            	if (destMulticast && networkInterface != null)
+            		multicastSocket.joinGroup(new InetSocketAddress(destSocketAddress.getAddress(), 0), networkInterface);
+            	else if (destMulticast)
             		multicastSocket.joinGroup(destSocketAddress.getAddress());
             		
             } else {
