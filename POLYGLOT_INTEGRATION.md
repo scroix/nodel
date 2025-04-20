@@ -1,89 +1,140 @@
-# Nodel: Target Architecture with GraalVM Python
+> This document tracks the migration of **Nodel** from a Jython‑based “Python 2 on the JVM” model to a **GraalVM Polyglot** model that runs **Python 3**.  
+> It is intended both as architecture reference and as an up‑to‑date progress ledger.
 
-This document outlines the proposed architecture for the Nodel project after migrating from Jython to GraalVM's Polyglot Engine for running Python node scripts.
+--------------------------------------------------------------------
+1 – Vision & Top‑Level Goals
+--------------------------------------------------------------------
 
-## 1. Core Architecture: Java Host + GraalVM Python Nodes
+1. First‑class Python 3  
+• Enable node authors to write modern Python without Jython’s limitations.  
+• Permit use of current Python libraries (subject to GraalPy compatibility).  
 
-* **Java Host:** Remains the foundation, handling infrastructure (networking, core lifecycle, resources) using standard Java.
-* **Python Nodes ("Recipes"):** Node-specific logic continues to be written in Python (now **Python 3**). These scripts will be executed by GraalVM's Python language runtime, managed via the Polyglot Engine.
-* **Polyglot Engine:** GraalVM's Polyglot Engine becomes the bridge, replacing Jython. It allows embedding and interacting with Python code from Java in a standardized way.
+2. One polyglot bridge, many languages  
+• While the immediate target is Python, GraalVM also unlocks JavaScript, Ruby, R, etc., for future node types.  
 
-## 2. Embedding GraalVM Python (`PyNode.java` Adaptation)
+3. Keep the Java host intact  
+• Networking, persistence, scheduling and web UI continue to live in `nodel-framework` / `nodel-jyhost` with minimal API churn for scripts.  
 
-* **`Context` replaces `PythonInterpreter`:** The core change in `PyNode.java` will be replacing the Jython `PythonInterpreter` with `org.graalvm.polyglot.Context`. Each `PyNode` instance will manage its own isolated `Context` for running its specific Python script(s).
-* **Context Configuration:** Creating a `Context` requires careful configuration using `Context.newBuilder("python")`:
-    * **Host Access:** Explicit configuration (`HostAccess.EXPLICIT` or custom policies) will be needed to define precisely which Java classes/methods from the host (`ManagedToolkit`, etc.) are allowed to be accessed or called by the Python code.
-    * **Python Options:** Setting Python-specific options like the Python path (`python.PythonPath`), virtual environment paths, and potentially filesystem access (`allowIO`).
-    * **Threading:** Deciding whether to allow multi-threaded access (`allowMultithreading(true)`), although a single Context cannot execute Python code concurrently on multiple threads.
-* **Script Execution:** Instead of `interpreter.execfile()`, `PyNode` will use `context.eval(Source.newBuilder(...).build())` to load and execute the node's Python scripts (`script.py`, etc.).
+--------------------------------------------------------------------
+2 – Architecture Snapshot (GraalVM Path)
+--------------------------------------------------------------------
 
-## 3. Exposing Java Services to Python (`ManagedToolkit` & `nodetoolkit.py` Adaptation)
+```mermaid
+graph TD
+    Browser -->|REST / WebSocket| PyNodePlugin[Java Host (PyNode plugin)<br>• creates Context per node<br>• injects ManagedToolkit<br>• evals nodetoolkit + user];
+    HostCore[Java Host (Core)<br>• HTTPD / UI<br>• Discovery / I/O<br>• Persistency] <--> PyNodePlugin;
+    PyNodePlugin -->|Polyglot API| GraalPyContext[GraalPy Context<br>(per node)];
+    GraalPyContext -->|Python calls| PythonScripts[script.py<br>recipes/*];
 
-* **Java Service Facade (`ManagedToolkit.java`):**
-    * This class remains the provider of core Java services.
-    * **Crucially:** Methods intended to be called from Python *must* be explicitly exposed to the GraalVM Polyglot Engine, typically by annotating them with `@HostAccess.Export` (when using `HostAccess.EXPLICIT`).
-* **Injecting Java Objects into Context:** `PyNode` will inject the configured `ManagedToolkit` instance into the Python `Context`'s bindings, making it accessible to the Python code.
-    ```java
-    // Inside PyNode, after creating the toolkit instance
-    context.getPolyglotBindings().putMember("java_managed_toolkit_instance", toolkit);
-    ```
-* **Python Wrapper (`nodetoolkit.py`):**
-    * This script still acts as the Pythonic API layer.
-    * It will need to import the injected Java object using GraalVM's mechanism:
-        ```python
-        # Inside nodetoolkit.py
-        from polyglot import import_value
-        nodetoolkit = import_value('java_managed_toolkit_instance')
+    style Browser fill:#f9f,stroke:#333,stroke-width:2px;
+    style HostCore fill:#ccf,stroke:#333,stroke-width:2px;
+    style PyNodePlugin fill:#ccf,stroke:#333,stroke-width:2px;
+    style GraalPyContext fill:#cfc,stroke:#333,stroke-width:2px;
+    style PythonScripts fill:#cfc,stroke:#333,stroke-width:2px;
+```
 
-        # Example wrapper function
-        def Timer(func, intervalInSeconds, firstDelayInSeconds=0, stopped=False):
-            # Calls the EXPOSED Java method via GraalVM interop
-            return nodetoolkit.createTimer(func, int(firstDelayInSeconds * 1000),
-                                         int(intervalInSeconds * 1000), stopped)
-        ```
-    * The wrapper functions will now rely entirely on GraalVM's cross-language calling mechanism.
-    * **Requires Python 3 syntax.**
+Key facts  
+• One `org.graalvm.polyglot.Context` per node; created in `PyNode.createContext()`.  
+• `allowAllAccess(true)` is a temporary bootstrap; will be hardened (see tasks).  
+• `nodetoolkit.py` is executed first; it wraps the injected Java `ManagedToolkit` and recreates decorators (`@local_action`, `@remote_event`, …).  
+• `BindingsExtractor` walks the Context’s Python globals (`Value`) and registers Nodel actions/events/params.
 
-## 4. Linking Python Logic to Nodel Actions/Events (`BindingsExtractor` Rewrite)
+--------------------------------------------------------------------
+3 – Progress to Date  (Apr 2025)
+--------------------------------------------------------------------
 
-* **Polyglot API Introspection:** `BindingsExtractor` needs a significant rewrite. It can no longer directly introspect Jython objects. The new process will involve:
-    1.  Ensuring the node's script has been executed within the `Context`.
-    2.  Getting access to the Python script's global scope: `Value bindings = context.getBindings("python");`
-    3.  Iterating through the members of the `bindings` `Value` object: `bindings.getMemberKeys()`.
-    4.  For each member key (variable/function name):
-        * Check if the name matches the Nodel conventions (`local_action_`, `remote_event_`, etc.).
-        * Get the corresponding `Value`: `Value memberValue = bindings.getMember(key);`
-        * Determine its nature: Is it executable (`memberValue.canExecute()`)? Is it readable?
-        * Extract metadata: This might involve calling helper functions within the Python script via `context.eval()` or accessing properties/docstrings if the `Value` API allows (e.g., `memberValue.getMember("__doc__").asString()`).
-* **Registration:** The extracted binding information (name, type, metadata, and potentially the `Value` object representing the function) will be used by `PyNode` to register with the core Nodel framework, similar to before, but now storing references compatible with GraalVM execution.
+✔ Interpreter swap  
+    ‐ Jython removed from build; GraalPy libs added.  
+    ‐ Python stdout/stderr bridged to Nodel console with line buffering.  
 
-## 5. Interaction Mechanisms via Polyglot API
+✔ Lifecycle parity  
+    ‐ `before_main`, `main`, `after_main`, `at_cleanup` executed in order.  
+    ‐ Hot‑reload works on script/config file change.  
 
-* **Java -> Python Calls:**
-    * To execute a Python function (e.g., `local_action_turn_on`), `PyNode` will:
-        1.  Retrieve the function `Value` from the context bindings: `Value functionValue = context.getBindings("python").getMember("local_action_turn_on");`
-        2.  Check `functionValue.canExecute()`.
-        3.  Execute it, passing arguments: `Value result = functionValue.execute(arg1, arg2);` (Java arguments are automatically converted where possible).
-        4.  Convert the result `Value` back to the expected Java type: `String status = result.as(String.class);`
-* **Python -> Java Calls:**
-    * When Python code calls a method on the imported `nodetoolkit` object (which is the Java `ManagedToolkit` instance):
-        1.  GraalVM's Polyglot Engine intercepts the call.
-        2.  It checks if the method is accessible based on the `HostAccess` configuration (e.g., presence of `@HostAccess.Export`).
-        3.  It converts Python arguments to Java types.
-        4.  It invokes the Java method.
-        5.  It converts the Java return value back into a GraalVM `Value` for the Python side.
+✔ Bindings discovery  
+    ‐ Extractor rewritten for `Value` API; JSON/docstring metadata handled.  
 
-## 6. Threading Model Considerations
+✔ Python‑side toolkit  
+    ‐ Console shim keeps `console.instance` pattern alive.  
+    ‐ Timer, TCP, UDP, call/call_safe, decorator helpers ported.  
 
-* GraalVM `Context` objects have specific threading rules. If configured with `allowMultithreading(true)`, multiple Java threads can *access* the context (e.g., call Python functions), but only one thread can be *executing code inside* the context at any given time.
-* Explicit context management (`context.enter()` / `context.leave()`) might be required if Java threads need to interact with the same context over extended periods or across different operations.
-* The need for the original `ReentrantLock` might diminish for protecting Jython internals, but locking might still be required for managing concurrent access to shared *Java* resources or ensuring serialized execution of specific Python logic if the `CallbackQueue` pattern is maintained for business logic reasons.
+✔ Build & runtime  
+    ‐ Gradle 8.13, Java 21, GraalVM Native Image plugin compile.  
+    ‐ Node starts, runs recipes, REPL (`exec`, `eval`) functional.
 
-## 7. Python Environment
+--------------------------------------------------------------------
+4 – Remaining Work (priority‑ordered)
+--------------------------------------------------------------------
 
-* The system will target **Python 3.x**. Existing node scripts written for Python 2 (common with older Jython versions) will need to be updated.
-* Dependency management might leverage GraalVM's Python environment tools (e.g., `graalpy -m venv ...`).
+4.1 HostAccess hardening  
+    ☐ Switch `allowAllAccess(true)` → `HostAccess.EXPLICIT`.  
+    ☐ Annotate `ManagedToolkit` and other exposed classes with `@HostAccess.Export`.  
+    ☐ Add negative tests ensuring forbidden reflection is blocked.
 
-## Summary
+4.2 Toolkit internal clean‑up  
+    ☐ Remove lingering `PyObject`, `PyFunction` fields; replace with `Value` when a back‑reference is required.  
+    ☐ Audit methods that still return/accept Jython types.
 
-Migrating Nodel's Python integration to GraalVM involves replacing Jython's `PythonInterpreter` with GraalVM's `Context` and rewriting all Java-Python interaction points to use the GraalVM Polyglot API (`Value`, `HostAccess`, `Context` methods). Key tasks include configuring the `Context` correctly, adapting `BindingsExtractor` to use `Value` introspection, ensuring Java methods are properly exposed (`@HostAccess.Export`), updating `nodetoolkit.py` to use `polyglot.import_value` and Python 3 syntax, and reviewing the threading model based on `Context` rules. This provides a more standardized, modern, and potentially performant way to integrate Python scripting.
+4.3 Residual Jython code paths  
+    ☐ pysp servlet / template engine. Decide: port or deprecate.  
+    ☐ CLI helpers (JyConsole, etc.) – likely obsolete; remove or port.  
+    ☐ Unit tests referencing `PythonInterpreter`.
+
+4.4 Recipe import semantics  
+    ☐ Reinstate Java import hook (`JavaImportFinder`) _or_ document `polyglot.import_value("java.type", "...")`.  
+    ☐ Run Python 2→3 conversion on official recipe set; fix remaining syntax.  
+
+4.5 Threading & Callback discipline  
+    ☐ Decide on one of:  
+       a) single `_busy` lock + CallbackQueue, or  
+       b) rely solely on CallbackQueue (GraalPy already serialises).  
+    ☐ Remove redundant locking.
+
+4.6 Context‑in‑native‑image  
+    ☐ Supply reflection/resource configs for Native Image (JGit, Jetty, SLF4J).  
+    ☐ Add CI job building `nodel-jyhost-native`.
+
+4.7 Error surfacing  
+    ☐ Map `PolyglotException` into structured JSON for web UI (parity with Jython).  
+
+4.8 Parameter serialisation check  
+    ☐ Verify `jsonEncode/jsonDecode` round‑trip for GraalPy values; patch where necessary.  
+
+4.9 Documentation & tooling  
+    ☐ Update BUILDING.md with `GRAALVM_HOME`, native‑image flags, recipe migration guide.  
+    ☐ Provide a “compatibility matrix” (feature / Jython / GraalPy).
+
+--------------------------------------------------------------------
+5 – Short‑Term Roadmap
+--------------------------------------------------------------------
+
+Week 1    • Lock down HostAccess; fix compile errors.  
+          • Purge obvious Jython classes; green build.  
+
+Week 2    • Decide fate of pysp; implement path.  
+          • Reactivate Java import hook; upgrade 10 pilot recipes.  
+
+Week 3    • Native‑image CI; reflection configs.  
+          • Web‑UI error propagation parity.  
+
+Week 4    • Full recipe migration; ship beta artefact.  
+
+--------------------------------------------------------------------
+6 – Conventions & Tips for Node Authors
+--------------------------------------------------------------------
+
+• Use `from polyglot import import_value` to reach Java types, e.g.  
+    `Git = import_value("java.type:org.eclipse.jgit.api.Git")` (subject to final import policy).  
+
+• All timers & network helpers are now classes/functions in `nodetoolkit` – import them directly:  
+    ```python
+    from nodetoolkit import Timer, TCP, local_action
+    ```  
+
+• Python 3 only – ensure `print()` functions, `items()` instead of `iteritems()`, integer division (`//`) where appropriate.  
+
+--------------------------------------------------------------------
+7 – Acknowledgements
+--------------------------------------------------------------------
+
+This migration builds on the original Nodel architecture by Museum Victoria, enriched by the GraalVM community and contributors to this branch. Everyone is welcome to file issues and PRs against the **migrate-to-graalvm** branch while the work is stabilising.  
