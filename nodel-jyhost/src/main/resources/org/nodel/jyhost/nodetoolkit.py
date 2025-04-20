@@ -387,6 +387,31 @@ def process_cleanup_functions() -> int:
             console.warn(f"Cleanup function failed: {e}")
     return count
 
+# --- Lookup Functions ---
+def lookup_local_action(name):
+    """Find a local action by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupLocalAction(name)
+
+def lookup_local_event(name):
+    """Find a local event by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupLocalEvent(name)
+
+def lookup_remote_action(name):
+    """Find a remote action by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupRemoteAction(name)
+
+def lookup_remote_event(name):
+    """Find a remote event by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupRemoteEvent(name)
+
 # Make commonly used items available at module level
 __all__ = [
     'console',
@@ -410,5 +435,9 @@ __all__ = [
     'is_empty',
     'before_main',
     'after_main',
-    'at_cleanup'
+    'at_cleanup',
+    'lookup_local_action',
+    'lookup_local_event',
+    'lookup_remote_action',
+    'lookup_remote_event',
 ]

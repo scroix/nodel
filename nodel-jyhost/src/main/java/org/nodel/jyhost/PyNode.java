@@ -299,22 +299,54 @@ public class PyNode extends BaseDynamicNode {
                 // Now run the user script (script.py)
                 if (_scriptFile.exists()) {
                     executeFileScript(_scriptFile);
+
+                    // Extract bindings from Python
+                    List<String> warnings = new ArrayList<>();
+                    org.graalvm.polyglot.Value pythonGlobals = _pythonContext.getBindings(PYTHON_LANGUAGE_ID);
+                    Bindings bindings = BindingsExtractor.extract(pythonGlobals, warnings);
+                    applyBindings(bindings); // Call applyBindings instead of setBindings
+                    for (String warning : warnings) {
+                        _logger.warn(warning);
+                    }
+
+                    // Execute the Python lifecycle functions
+                    _pythonContext.enter();
+                    try {
+                        // Execute any before_main hooks
+                        _logger.info("Running before_main functions...");
+                        org.graalvm.polyglot.Value beforeMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_before_main_functions");
+                        if (beforeMainFunc != null && beforeMainFunc.canExecute()) {
+                            beforeMainFunc.execute();
+                        }
+                        
+                        // Execute main() if it exists
+                        _logger.info("Looking for main() function...");
+                        org.graalvm.polyglot.Value mainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("main");
+                        if (mainFunc != null && mainFunc.canExecute()) {
+                            _logger.info("Executing main() function...");
+                            mainFunc.execute();
+                        } else {
+                            _logger.info("No main() function found, skipping");
+                        }
+                        
+                        // Execute any after_main hooks
+                        _logger.info("Running after_main functions...");
+                        org.graalvm.polyglot.Value afterMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_after_main_functions");
+                        if (afterMainFunc != null && afterMainFunc.canExecute()) {
+                            afterMainFunc.execute();
+                        }
+                    } catch (PolyglotException e) {
+                        handlePolyglotException("Executing lifecycle functions", e);
+                    } catch (Exception e) {
+                        handleException("Executing lifecycle functions", e);
+                    } finally {
+                        try { _pythonContext.leave(); } catch(Exception e) { /* ignore */ }
+                    }
+
+                    // Store file modification hash for reload detection
+                    _fileModifiedHash = calculateFileModifiedHash();
+
                 }
-
-                // Extract bindings from Python
-                List<String> warnings = new ArrayList<>();
-                // TODO: Implement proper BindingsExtractor for GraalVM Python
-                Bindings bindings = Bindings.Empty; // Temporary placeholder
-                setBindings(bindings);
-                for (String warning : warnings) {
-                    _logger.warn(warning);
-                }
-
-                // Execute any 'after_main' functions
-                // TODO: Call Python main function or equivalent
-
-                // Store file modification hash for reload detection
-                _fileModifiedHash = calculateFileModifiedHash();
 
                 _logger.info("Python node initialised.");
                 _outReader.inject("Python node initialised.");
@@ -601,57 +633,53 @@ public class PyNode extends BaseDynamicNode {
         }
     }
 
-    protected void setBindings(Bindings bindings) {
-        _busy.lock();
-        try {
-            // Apply the bindings to the node
-            applyBindings(bindings);
-            
-            // After setting bindings, cache references to the Python functions
-            // needed for actions and remote event handlers.
-            _pythonFunctions.clear();
-
-            if (bindings != null && bindings.local != null) {
-                 // Cache Local Action functions
-                for (Entry<SimpleName, Binding> entry : bindings.local.actions.entrySet()) {
-                    // Get the function name - using a safe approach since definition might not exist
-                    String functionName = "local_action_" + entry.getKey().toString();
-                    cachePythonFunction(functionName);
-                }
-            }
-            if (bindings != null && bindings.remote != null) {
-                 // Cache Remote Event handler functions
-                 for (Entry<SimpleName, NodelEventInfo> entry : bindings.remote.events.entrySet()) {
-                    // The binding definition (function name) is stored within NodelEventInfo if using BindingsExtractor correctly
-                    if (entry.getValue() instanceof PyBindingInfo) {
-                        cachePythonFunction(((PyBindingInfo)entry.getValue()).getFunctionName());
-                    }
-                 }
-            }
-        } finally {
-            _busy.unlock();
-        }
-    }
-    
-    /**
-     * Applies the bindings to the node.
-     */
     private void applyBindings(Bindings bindings) {
         if (bindings == null) {
             _logger.info("No bindings were specified.");
             return;
         }
         
-        // Here we would register local and remote bindings, events, etc.
-        // For now, this is a placeholder
-        _logger.info("Applied {} bindings", 
-            (bindings.local != null ? 
-                (bindings.local.actions != null ? bindings.local.actions.size() : 0) +
-                (bindings.local.events != null ? bindings.local.events.size() : 0) : 0) +
-            (bindings.remote != null ? 
-                (bindings.remote.actions != null ? bindings.remote.actions.size() : 0) +
-                (bindings.remote.events != null ? bindings.remote.events.size() : 0) : 0)
-        );
+        // Register local actions with BaseDynamicNode
+        if (bindings.local != null && bindings.local.actions != null) {
+            for (Entry<SimpleName, Binding> entry : bindings.local.actions.entrySet()) {
+                addAction(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        // Register local events
+        if (bindings.local != null && bindings.local.events != null) {
+            for (Entry<SimpleName, Binding> entry : bindings.local.events.entrySet()) {
+                addEvent(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        // Register remote actions
+        if (bindings.remote != null && bindings.remote.actions != null) {
+            for (Entry<SimpleName, NodelActionInfo> entry : bindings.remote.actions.entrySet()) {
+                addRemoteAction(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        // Register remote events
+        if (bindings.remote != null && bindings.remote.events != null) {
+            for (Entry<SimpleName, NodelEventInfo> entry : bindings.remote.events.entrySet()) {
+                addRemoteEvent(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        // Register parameters
+        if (bindings.params != null) {
+            for (Entry<SimpleName, ParameterBinding> entry : bindings.params.entrySet()) {
+                addParameter(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        _logger.info("Applied {} local actions, {} local events, {} remote actions, {} remote events, {} parameters",
+            (bindings.local != null && bindings.local.actions != null) ? bindings.local.actions.size() : 0,
+            (bindings.local != null && bindings.local.events != null) ? bindings.local.events.size() : 0,
+            (bindings.remote != null && bindings.remote.actions != null) ? bindings.remote.actions.size() : 0,
+            (bindings.remote != null && bindings.remote.events != null) ? bindings.remote.events.size() : 0,
+            (bindings.params != null) ? bindings.params.size() : 0);
     }
 
     /**
@@ -673,7 +701,7 @@ public class PyNode extends BaseDynamicNode {
         } catch (Exception e) {
              handleException("Caching function " + functionName, e);
         } finally {
-            try { _pythonContext.leave(); } catch(Exception le) { /* ignore */ }
+            try { _pythonContext.leave(); } catch(Exception e) { /* ignore */ }
         }
     }
 
@@ -1147,4 +1175,17 @@ public class PyNode extends BaseDynamicNode {
         _logger.error("Node name registration failed", exc);
         markFailed(exc);
     }
+
+    // -----------------------------------------------------------------
+    //  compatibility shims – TODO: hook into new binding mechanism
+    // -----------------------------------------------------------------
+    private void addAction(SimpleName name, Binding binding) { /* TODO */ }
+ 
+    private void addEvent(SimpleName name, Binding binding) { /* TODO */ }
+ 
+    private void addRemoteAction(SimpleName name, NodelActionInfo info) { /* TODO */ }
+ 
+    private void addRemoteEvent(SimpleName name, NodelEventInfo info) { /* TODO */ }
+ 
+    private void addParameter(SimpleName name, ParameterBinding param) { /* TODO */ }
 }

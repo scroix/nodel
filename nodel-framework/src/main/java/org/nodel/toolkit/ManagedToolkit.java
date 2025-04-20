@@ -1481,6 +1481,26 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
         return "GraalVM Node"; // Placeholder
     }
 
+    @HostAccess.Export
+    public Object lookupLocalAction(String name) {
+        return getLocalAction(name);
+    }
+
+    @HostAccess.Export
+    public Object lookupLocalEvent(String name) {
+        return getLocalEvent(name);
+    }
+
+    @HostAccess.Export
+    public Object lookupRemoteAction(String name) {
+        return getRemoteAction(name);
+    }
+
+    @HostAccess.Export
+    public Object lookupRemoteEvent(String name) {
+        return getRemoteEvent(name);
+    }
+
     private void ensureNotClosed() {
         if (_closed)
             throw new IllegalStateException("Node is closed.");
