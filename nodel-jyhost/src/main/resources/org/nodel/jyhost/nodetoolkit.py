@@ -16,68 +16,84 @@ from dataclasses import dataclass
 from typing import Any, Optional, Callable, Dict, List, Union
 from importlib.abc import MetaPathFinder, Loader
 from importlib.util import spec_from_loader
+from java import type as jtype
 
-# class JavaPackage:
-#     """Represents a Java package"""
-#     def __init__(self, toolkit, name):
-#         self._toolkit = toolkit
-#         self._name = name
+class JavaPackage:
+    """Represents a Java package"""
+    def __init__(self, toolkit, name):
+        self._toolkit = toolkit
+        self._name = name
 
-#         # Add required module attributes
-#         self.__name__ = name
-#         self.__package__ = name
-#         self.__path__ = []  # Empty list indicates it's a package
-#         self.__loader__ = None
+        # Add required module attributes
+        self.__name__ = name
+        self.__package__ = name
+        self.__path__ = []  # Empty list indicates it's a package
+        self.__loader__ = None
 
-#     def __getattr__(self, name):
-#         fullname = f"{self._name}.{name}"
+    def __getattr__(self, name):
+        fullname = f"{self._name}.{name}"
 
-#         # First try loading as a class
-#         try:
-#             return self._toolkit.getClass(fullname)
-#         except Exception:
-#             # If not a class, return a new package
-#             return JavaPackage(self._toolkit, fullname)
+        # First try loading as a class
+        try:
+            # Use GraalPy Java interop to get the class
+            cls = jtype(fullname)              # returns a Class or raises
+        except Exception: # Catch any exception (e.g. if it's a package)
+            cls = None
 
-# class JavaClassLoader(Loader):
-#     """Loads Java classes and packages"""
-#     def __init__(self, toolkit, fullname):
-#         self.toolkit = toolkit
-#         self.fullname = fullname
+        if cls is None:
+             # If not a class or import failed, return a new package
+            return JavaPackage(self._toolkit, fullname)
+        else:
+             # otherwise we have a genuine class
+             return cls
 
-#     def create_module(self, spec):
-#         # First check if it's a final class name
-#         try:
-#             cls = self.toolkit.getClass(self.fullname)
-#             # Add Python module attributes to the class
-#             cls.__name__ = self.fullname
-#             cls.__package__ = self.fullname.rpartition('.')[0]
-#             return cls
-#         except:
-#             # If not a class, create a package
-#             return JavaPackage(self.toolkit, self.fullname)
+class JavaClassLoader(Loader):
+    """Loads Java classes and packages"""
+    def __init__(self, toolkit, fullname):
+        self.toolkit = toolkit
+        self.fullname = fullname
 
-#     def exec_module(self, module):
-#         # Nothing to execute for Java classes/packages
-#         pass
+    def create_module(self, spec):
+        # First check if it's a final class name
+        try:
+            cls = jtype(self.fullname)              # returns a Class or raises
+        except Exception:
+            cls = None
 
-# class JavaImportFinder(MetaPathFinder):
-#     """Finds Java packages and classes during import"""
-#     def __init__(self, toolkit):
-#         self.toolkit = toolkit
-#         self.roots = {'org', 'java', 'com', 'javax'}
+        if cls is None:
+            # treat as package
+            return JavaPackage(self.toolkit, self.fullname)
 
-#     def find_spec(self, fullname, path, target=None):
-#         parts = fullname.split('.')
-#         if parts[0] in self.roots:
-#             return spec_from_loader(
-#                 fullname,
-#                 JavaClassLoader(self.toolkit, fullname)
-#             )
-#         return None
+        # otherwise we have a genuine class
+        cls.__name__ = self.fullname
+        cls.__package__ = self.fullname.rpartition('.')[0]
+        return cls
 
-# # Install the Java import hook immediately
-# # sys.meta_path.insert(0, JavaImportFinder(_toolkit))
+    def exec_module(self, module):
+        # Nothing to execute for Java classes/packages
+        pass
+
+class JavaImportFinder(MetaPathFinder):
+    """Finds Java packages and classes during import"""
+    def __init__(self, toolkit):
+        self.toolkit = toolkit
+        # Define allowed root packages for security
+        self.roots = {'org', 'java', 'com', 'javax'} # Add other roots as needed
+
+    def find_spec(self, fullname, path, target=None):
+        parts = fullname.split('.')
+        if parts[0] in self.roots:
+            # If the root package is allowed, return a spec. 
+            # The loader (JavaClassLoader) will handle the actual resolution 
+            # and raise an error if the type/package doesn't exist.
+            return spec_from_loader(
+                 fullname,
+                 JavaClassLoader(self.toolkit, fullname)
+            )
+        return None
+
+# Install the Java import hook immediately
+sys.meta_path.insert(0, JavaImportFinder(_toolkit))
 
 # --- Compatibility shim for console module import -----------------
 import types, sys

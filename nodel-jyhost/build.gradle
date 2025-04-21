@@ -40,7 +40,7 @@ dependencies {
     implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.5'
 
     // convenience dependency: required *only* for 'recipe sync' node
-    implementation 'org.eclipse.jgit:org.eclipse.jgit:3.7.1.+'
+    implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
 
     // convenience dependency: required for new SNMP-based nodes
     implementation('org.snmp4j:snmp4j:2.5.8') {
@@ -61,6 +61,10 @@ dependencies {
 
     implementation "org.graalvm.python:python:${polyglotVersion}"
     implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"
+
+    // JUnit 5 for testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.2'
 }
 
 // ------------------------------------------------------------------
@@ -137,6 +141,12 @@ run {
             '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
             '--enable-native-access=ALL-UNNAMED'
     ]
+
+    doFirst {
+        println "Run task classpath:"
+        classpath.each { File file -> println file.absolutePath }
+        println "-- End Run task classpath --"
+    }
 }
 
 tasks.build.dependsOn tasks.shadowJar
