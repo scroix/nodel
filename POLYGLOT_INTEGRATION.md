@@ -90,14 +90,14 @@ _(Deferred as lower priority; not critical path for initial functionality)_
 
 ### 4.3 Residual Jython code paths
 
-*   [ ] pysp servlet / template engine. Decide: port or deprecate.
-*   [ ] CLI helpers (JyConsole, etc.) – likely obsolete; remove or port.
-*   [ ] Unit tests referencing `PythonInterpreter`.
+*   [x] pysp servlet / template engine. Decide: port or deprecate.
+*   [x] CLI helpers (JyConsole, etc.) – likely obsolete; remove or port.
+*   [x] Unit tests referencing `PythonInterpreter`.
 
 ### 4.4 Recipe import semantics
 
-*   [ ] Reinstate Java import hook (`JavaImportFinder`) *or* document `polyglot.import_value("java.type", "...")`.
-*   [ ] Run Python 2->3 conversion on official recipe set; fix remaining syntax.
+*   [x] Reinstate Java import hook (`JavaImportFinder`) *or* document `polyglot.import_value("java.type", "...")`.
+*   [x] Run Python 2->3 conversion on official recipe set; fix remaining syntax.
 
 ### 4.5 Threading & Callback discipline
 
