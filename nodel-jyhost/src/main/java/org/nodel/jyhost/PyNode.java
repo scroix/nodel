@@ -115,6 +115,11 @@ public class PyNode extends BaseDynamicNode {
     private Map<String, org.graalvm.polyglot.Value> _pythonFunctions = new HashMap<>();
 
     /**
+     * Stores mapping from remote event simple name to python handler function name.
+     */
+    private Map<SimpleName,String> _pythonEventHandlers = new HashMap<>();
+
+    /**
      * Track stuck function calls.
      */
     private AtomicLong _funcSeqNumber = new AtomicLong();
@@ -782,8 +787,9 @@ public class PyNode extends BaseDynamicNode {
 
         // For normal Python events triggered from remote events, we need to find the handler
         // This will be retrieved from the PyBindingInfo if available
-        String remoteFunctionName = "remote_event_" + eventName.toString(); // Default naming convention
-        
+        String remoteFunctionName = _pythonEventHandlers.get(eventName);
+        if (remoteFunctionName == null) remoteFunctionName = "remote_event_" + eventName; // Default naming convention
+
         // More sophisticated lookup might be needed here based on your binding structure
 
         final org.graalvm.polyglot.Value pyFunc = _pythonFunctions.get(remoteFunctionName);
@@ -793,7 +799,7 @@ public class PyNode extends BaseDynamicNode {
         }
 
         final String functionName = remoteFunctionName;
-        
+
         // Use the callback queue to ensure execution within the node's context/thread
         final H0 callbackRunnable = new H0() {
             @Override
@@ -871,45 +877,45 @@ public class PyNode extends BaseDynamicNode {
     public Context getPythonContext() {
         return _pythonContext;
     }
-    
+
     /**
      * Injects an error into the node's console.
-     * 
+     *
      * @param message The error message
      * @param exception The exception that caused the error
      */
     public void injectError(String message, RuntimeException exception) {
         _logger.error(message + ": " + exception.getMessage());
     }
-    
+
     /**
      * Evaluates a Python expression within the node's context.
      * Used by REST API and other clients.
-     * 
+     *
      * @param expr The Python expression to evaluate
      * @param source A description of the source of the request (for logging)
      * @return The result of the evaluation
      */
     @Service(name="eval", title="Evaluate", desc="Evaluates a Python expression.")
-    public Object eval(@Param(name="expr", title="Expression", desc="A Python expression.") final String expr, 
+    public Object eval(@Param(name="expr", title="Expression", desc="A Python expression.") final String expr,
                       String source) throws Exception {
         if (_closed || _pythonContext == null)
             throw new RuntimeException("The interpreter is not initialized or has been closed.");
-        
+
         // For tracking function calls
         final String functionKey = "eval" + (!Strings.isBlank(source) ? "_" + source : "") + "_" + _funcSeqNumber.getAndIncrement();
-        
+
         try {
             _busy.lock();
             _logger.info("Evaluating expression: " + expr);
-            
+
             try {
                 _pythonContext.enter();
-                
+
                 // Evaluate the Python expression and return the result
                 Source source1 = Source.newBuilder(PYTHON_LANGUAGE_ID, expr, "eval").buildLiteral(); // Try as expression
                 org.graalvm.polyglot.Value result = _pythonContext.eval(source1);
-                
+
                 // Convert the result to Java if possible
                 if (result.isString()) {
                     return result.asString();
@@ -933,33 +939,33 @@ public class PyNode extends BaseDynamicNode {
             _busy.unlock();
         }
     }
-    
+
     /**
      * Executes Python code within the node's context.
-     * 
+     *
      * @param code The Python code to execute
      * @param source A description of the source of the request (for logging)
      */
     @Service(name="exec", title="Execute", desc="Execute Python code fragment.")
-    public void exec(@Param(name="code", title="Code", desc="A Python code fragment.") final String code, 
+    public void exec(@Param(name="code", title="Code", desc="A Python code fragment.") final String code,
                     String source) throws Exception {
         if (_closed || _pythonContext == null)
             throw new RuntimeException("The interpreter is not initialized or has been closed.");
-        
+
         if (code == null || code.trim().isEmpty()) {
             _logger.debug("Empty code fragment received in exec.");
             return; // Nothing to execute
         }
-        
+
         final String functionKey = "exec" + (!Strings.isBlank(source) ? "_" + source : "") + "_" + _funcSeqNumber.getAndIncrement();
-        
+
         try {
             _busy.lock();
             _logger.info("Executing code fragment" + (source != null ? " from " + source : ""));
-            
+
             try {
                 _pythonContext.enter();
-                
+
                 // REPL-like behavior: Try evaluating as an expression first.
                 boolean evaluated = false;
                 try {
@@ -994,7 +1000,7 @@ public class PyNode extends BaseDynamicNode {
                             }
 
                             // Write to the node's output stream (which goes to LineReader -> log)
-                            _outReader.write(resultStr + "\n"); 
+                            _outReader.write(resultStr + "\n");
                             _outReader.flush(); // Ensure output is visible
                         }
                     }
@@ -1002,15 +1008,15 @@ public class PyNode extends BaseDynamicNode {
 
                 } catch (PolyglotException pe) {
                     // Check if it's a SyntaxError suggesting it's not an expression
-                    if (pe.isSyntaxError()) { 
+                    if (pe.isSyntaxError()) {
                         _logger.debug("Eval as expression failed (SyntaxError), will try as statement: {}", code);
                         // It failed as an expression, so let's proceed to execute it as a statement block.
-                        evaluated = false; 
+                        evaluated = false;
                     } else {
                         // Different error during evaluation, rethrow it.
                         _logger.error("Eval as expression failed (Non-SyntaxError): {}", pe.getMessage());
                         handlePolyglotException("Evaluating expression in exec", pe);
-                        throw new RuntimeException("Evaluation failed: " + pe.getMessage(), pe); 
+                        throw new RuntimeException("Evaluation failed: " + pe.getMessage(), pe);
                     }
                 }
 
@@ -1021,7 +1027,7 @@ public class PyNode extends BaseDynamicNode {
                     _pythonContext.eval(Source.newBuilder(PYTHON_LANGUAGE_ID, code, source).build()); // Execute as statement
                     _logger.debug("Execution as statement finished.");
                 }
- 
+
             } catch (PolyglotException e) {
                 handlePolyglotException("Executing code fragment", e);
                 throw new RuntimeException("Execution failed: " + e.getMessage(), e);
@@ -1032,7 +1038,7 @@ public class PyNode extends BaseDynamicNode {
             _busy.unlock();
         }
     }
-    
+
     /**
      * Tracks function execution for detecting stuck callbacks.
      */
@@ -1041,7 +1047,7 @@ public class PyNode extends BaseDynamicNode {
         // This is a placeholder that could be expanded with more sophisticated tracking
         _logger.debug("Function execution started: {}", functionName);
     }
-    
+
     /**
      * Removes function from tracking.
      */
@@ -1049,7 +1055,7 @@ public class PyNode extends BaseDynamicNode {
         // Corresponding function to end tracking
         _logger.debug("Function execution completed: {}", functionName);
     }
-    
+
     /**
      * Creates a custom lock for thread synchronization.
      * In the original Jython implementation, this worked around Jython threading issues.
@@ -1190,15 +1196,69 @@ public class PyNode extends BaseDynamicNode {
     }
 
     // -----------------------------------------------------------------
-    //  compatibility shims – TODO: hook into new binding mechanism
+    //  Binding implementation methods
     // -----------------------------------------------------------------
-    private void addAction(SimpleName name, Binding binding) { /* TODO */ }
- 
-    private void addEvent(SimpleName name, Binding binding) { /* TODO */ }
- 
-    private void addRemoteAction(SimpleName name, NodelActionInfo info) { /* TODO */ }
- 
-    private void addRemoteEvent(SimpleName name, NodelEventInfo info) { /* TODO */ }
- 
+    private void addAction(SimpleName name, Binding binding) {
+        // Constructor: NodelServerAction(SimpleName node, SimpleName action, Binding metadata)
+        NodelServerAction action = new NodelServerAction(getName(), name, binding);
+
+        // Handler required via registerAction(ActionRequestHandler handler)
+        ActionRequestHandler handler = (requestArg) -> {
+            handleActionRequest(name, requestArg, null); // Existing PyNode method
+        };
+        action.registerAction(handler);
+
+        injectLocalAction(action); // From BaseNode
+    }
+
+    private void addEvent(SimpleName name, Binding binding) {
+        // Constructor: NodelServerEvent(SimpleName node, SimpleName event, Binding metadata)
+        // No handler needed for server event emission.
+        NodelServerEvent event = new NodelServerEvent(getName(), name, binding);
+
+        injectLocalEvent(event); // From BaseNode
+    }
+
+    private void addRemoteAction(SimpleName name, NodelActionInfo info) {
+        // Create Binding from NodelActionInfo
+        Binding meta = new Binding(info.title, info.desc, info.group, info.caution, info.order, null); // Pass null for schema
+
+        // Prepare SimpleName objects for remote node/action
+        SimpleName remoteNode = info.node != null ? new SimpleName(info.node) : null;
+        SimpleName remoteAction = info.action != null ? new SimpleName(info.action) : null;
+
+        // Constructor: NodelClientAction(SimpleName name, Binding metadata, SimpleName node, SimpleName action)
+        NodelClientAction ra = new NodelClientAction(name, meta, remoteNode, remoteAction);
+
+        // Inject using BaseNode method - remoteNode/remoteAction might be redundant if BaseNode uses ra.getNode() etc.
+        injectRemoteAction(ra, remoteNode, remoteAction);
+    }
+
+    private void addRemoteEvent(SimpleName name, NodelEventInfo info) {
+        // Create Binding from NodelEventInfo
+        Binding meta = new Binding(info.title, info.desc, info.group, info.caution, info.order, null); // Pass null for schema
+
+        // Prepare SimpleName objects for remote node/event
+        SimpleName remoteNode = info.node != null ? new SimpleName(info.node) : null;
+        SimpleName remoteEvent = info.event != null ? new SimpleName(info.event) : null;
+
+        // Constructor: NodelClientEvent(SimpleName name, Binding metadata, SimpleName node, SimpleName event)
+        NodelClientEvent re = new NodelClientEvent(name, meta, remoteNode, remoteEvent);
+
+        // Handler required via setHandler(NodelEventHandler handler)
+        NodelEventHandler handler = (remoteNodeName, remoteEventName, arg) -> {
+            handleEvent(name, arg); // Use the *local* name ('name') to call PyNode's handleEvent
+        };
+        re.setHandler(handler);
+
+        // Inject using BaseNode method
+        injectRemoteEvent(re, remoteNode, remoteEvent);
+
+        // If it's Python-specific info, store the function name mapping
+        if (info instanceof PyBindingInfo) {
+            _pythonEventHandlers.put(name, ((PyBindingInfo) info).getFunctionName());
+        }
+    }
+
     private void addParameter(SimpleName name, ParameterBinding param) { /* TODO */ }
 }
