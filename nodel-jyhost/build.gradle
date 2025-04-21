@@ -30,20 +30,29 @@ description = 'Nodel JyHost'
 // Dependencies
 // ------------------------------------------------------------------
 dependencies {
-    // Your existing project dependencies:
     implementation project(':nodel-webui-js')
     implementation project(':nodel-framework')
-
     implementation 'commons-daemon:commons-daemon:1.0.15'
     implementation 'org.slf4j:slf4j-api:1.7.10'
-    implementation 'org.apache.httpcomponents:httpclient:4.5.5'
-    implementation('org.eclipse.jgit:org.eclipse.jgit:3.7.1.+')
+    implementation 'org.python:jython-standalone:2.5.4-rc1'
+
+    // for the Nodel HTTP client:
+    implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.5'
+
+    // convenience dependency: required *only* for 'recipe sync' node
+    implementation 'org.eclipse.jgit:org.eclipse.jgit:3.7.1.+'
+
+    // convenience dependency: required for new SNMP-based nodes
     implementation('org.snmp4j:snmp4j:2.5.8') {
-        exclude group: 'log4j', module: 'log4j'
+        exclude group:'log4j', module:'log4j' // (brings one extra dependency: log4j; can explicity exclude it because it's optional at runtime)
     }
+
+    // convenience dependency: JWTs (JSON Web Tokens), see https://github.com/museumsvictoria/nodel/discussions/297
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-orgjson:0.11.5'
+
+    // Add joda-time dependency
     implementation 'joda-time:joda-time:2.10.14'
 
     // ------------------------------------------------------------------
@@ -51,7 +60,8 @@ dependencies {
     // ------------------------------------------------------------------
 
     implementation "org.graalvm.python:python:${polyglotVersion}"
-    implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"}
+    implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"
+}
 
 // ------------------------------------------------------------------
 // Application plugin
