@@ -68,6 +68,18 @@ dependencies {
 }
 
 // ------------------------------------------------------------------
+// Test configuration
+// ------------------------------------------------------------------
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        showStandardStreams = true
+    }
+}
+
+// ------------------------------------------------------------------
 // Application plugin
 // ------------------------------------------------------------------
 application {

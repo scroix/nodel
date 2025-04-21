@@ -89,10 +89,10 @@ public class PyNode extends BaseDynamicNode {
     private Context _pythonContext; // Make non-final again
 
     /**
-     * Lock to help avoid overlapping operations, especially around Context access.
-     * GraalVM Contexts have their own threading rules, but this adds an outer layer.
+     * GraalVM Contexts automatically provide their own thread safety guarantees.
+     * The enter/leave pattern ensures proper thread attachment and serialization.
+     * (The _busy lock has been removed as it was redundant with GraalVM's built-in synchronization)
      */
-    private ReentrantLock _busy = new ReentrantLock();
 
     /**
      * When permanently closed (disposed).
@@ -250,128 +250,117 @@ public class PyNode extends BaseDynamicNode {
     
     public void init() throws Exception {
         // Called by BaseDynamicNode when first needed or after reload
-        _busy.lock();
+        if (_closed) return; // Do not re-init if permanently closed
+
+        _outReader.inject("Initialising Python node...");
+        _logger.info("Initialising Python node...");
+
+        // Locate script file
+        _scriptFile = new File(_root, "script.py");
+        if (!_scriptFile.exists()) {
+            // Create default script file if it doesn't exist
+            Stream.writeFully(_scriptFile, "# Default Python script\n\ndef main():\n    print('Hello from Python')\n");
+        }
+            
+        // Clear existing Python functions
+        _pythonFunctions.clear();
+
+        // Initialise the toolkit for this node
+        _callbackQueue = new CallbackQueue();
+        _toolkit = new ManagedToolkit(this)
+            .setCallbackHandler(_callbackQueue)
+            .attachConsole(new Console.Interface() {
+                @Override
+                public void warn(Object obj) {
+                    logWarning(String.valueOf(obj));
+                }
+                @Override
+                public void log(Object obj) {
+                    PyNode.this.log(String.valueOf(obj));
+                }
+                @Override
+                public void info(Object obj) {
+                    logInfo(String.valueOf(obj));
+                }
+                @Override
+                public void error(Object obj) {
+                    logError(String.valueOf(obj));
+                }
+            });
+
         try {
-            if (_closed) return; // Do not re-init if permanently closed
+            // First, clean up any previous bindings 
+            cleanupBindings();
+                
+            // Inject the toolkit into the Python context
+            _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
+            _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
 
-            _outReader.inject("Initialising Python node...");
-            _logger.info("Initialising Python node...");
+            // Load and execute the toolkit bootstrap script BEFORE any user script
+            loadToolkit();
 
-            // Locate script file
-            _scriptFile = new File(_root, "script.py");
-            if (!_scriptFile.exists()) {
-                // Create default script file if it doesn't exist
-                Stream.writeFully(_scriptFile, "# Default Python script\n\ndef main():\n    print('Hello from Python')\n");
+            // Now run the user script (script.py)
+            if (_scriptFile.exists()) {
+                executeFileScript(_scriptFile);
+
+                // Extract bindings from Python
+                List<String> warnings = new ArrayList<>();
+                org.graalvm.polyglot.Value pythonGlobals = _pythonContext.getBindings(PYTHON_LANGUAGE_ID);
+                Bindings bindings = BindingsExtractor.extract(pythonGlobals, warnings);
+                applyBindings(bindings); // Call applyBindings instead of setBindings
+                for (String warning : warnings) {
+                    _logger.warn(warning);
+                }
+
+                // Execute the Python lifecycle functions
+                _pythonContext.enter();
+                try {
+                    // Execute any before_main hooks
+                    _logger.info("Running before_main functions...");
+                    org.graalvm.polyglot.Value beforeMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_before_main_functions");
+                    if (beforeMainFunc != null && beforeMainFunc.canExecute()) {
+                        beforeMainFunc.execute();
+                    }
+                    
+                    // Execute main() if it exists
+                    _logger.info("Looking for main() function...");
+                    org.graalvm.polyglot.Value mainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("main");
+                    if (mainFunc != null && mainFunc.canExecute()) {
+                        _logger.info("Executing main() function...");
+                        mainFunc.execute();
+                    } else {
+                        _logger.info("No main() function found, skipping");
+                    }
+                    
+                    // Execute any after_main hooks
+                    _logger.info("Running after_main functions...");
+                    org.graalvm.polyglot.Value afterMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_after_main_functions");
+                    if (afterMainFunc != null && afterMainFunc.canExecute()) {
+                        afterMainFunc.execute();
+                    }
+                } catch (PolyglotException e) {
+                    handlePolyglotException("Executing lifecycle functions", e);
+                } catch (Exception e) {
+                    handleException("Executing lifecycle functions", e);
+                } finally {
+                    try { _pythonContext.leave(); } catch(Exception e) { /* ignore */ }
+                }
+
+                // Store file modification hash for reload detection
+                _fileModifiedHash = calculateFileModifiedHash();
+
+            }
+
+            _logger.info("Python node initialised.");
+            _outReader.inject("Python node initialised.");
+            
+            // Mark as successfully initialized by setting the description
+            synchronized (_signal) {
+                _started = DateTime.now();
+                _desc = "GraalVM Python Node";
+                _signal.notifyAll();
             }
             
-            // Clear existing Python functions
-            _pythonFunctions.clear();
-
-            // Initialise the toolkit for this node
-            _callbackQueue = new CallbackQueue();
-            _toolkit = new ManagedToolkit(this)
-                .setCallbackHandler(_callbackQueue)
-                .attachConsole(new Console.Interface() {
-                    @Override
-                    public void warn(Object obj) {
-                        logWarning(String.valueOf(obj));
-                    }
-                    @Override
-                    public void log(Object obj) {
-                        PyNode.this.log(String.valueOf(obj));
-                    }
-                    @Override
-                    public void info(Object obj) {
-                        logInfo(String.valueOf(obj));
-                    }
-                    @Override
-                    public void error(Object obj) {
-                        logError(String.valueOf(obj));
-                    }
-                });
-
-            try {
-                // First, clean up any previous bindings 
-                cleanupBindings();
-                
-                // Inject the toolkit into the Python context
-                _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
-                _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
-
-                // Load and execute the toolkit bootstrap script BEFORE any user script
-                loadToolkit();
-
-                // Now run the user script (script.py)
-                if (_scriptFile.exists()) {
-                    executeFileScript(_scriptFile);
-
-                    // Extract bindings from Python
-                    List<String> warnings = new ArrayList<>();
-                    org.graalvm.polyglot.Value pythonGlobals = _pythonContext.getBindings(PYTHON_LANGUAGE_ID);
-                    Bindings bindings = BindingsExtractor.extract(pythonGlobals, warnings);
-                    applyBindings(bindings); // Call applyBindings instead of setBindings
-                    for (String warning : warnings) {
-                        _logger.warn(warning);
-                    }
-
-                    // Execute the Python lifecycle functions
-                    _pythonContext.enter();
-                    try {
-                        // Execute any before_main hooks
-                        _logger.info("Running before_main functions...");
-                        org.graalvm.polyglot.Value beforeMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_before_main_functions");
-                        if (beforeMainFunc != null && beforeMainFunc.canExecute()) {
-                            beforeMainFunc.execute();
-                        }
-                        
-                        // Execute main() if it exists
-                        _logger.info("Looking for main() function...");
-                        org.graalvm.polyglot.Value mainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("main");
-                        if (mainFunc != null && mainFunc.canExecute()) {
-                            _logger.info("Executing main() function...");
-                            mainFunc.execute();
-                        } else {
-                            _logger.info("No main() function found, skipping");
-                        }
-                        
-                        // Execute any after_main hooks
-                        _logger.info("Running after_main functions...");
-                        org.graalvm.polyglot.Value afterMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_after_main_functions");
-                        if (afterMainFunc != null && afterMainFunc.canExecute()) {
-                            afterMainFunc.execute();
-                        }
-                    } catch (PolyglotException e) {
-                        handlePolyglotException("Executing lifecycle functions", e);
-                    } catch (Exception e) {
-                        handleException("Executing lifecycle functions", e);
-                    } finally {
-                        try { _pythonContext.leave(); } catch(Exception e) { /* ignore */ }
-                    }
-
-                    // Store file modification hash for reload detection
-                    _fileModifiedHash = calculateFileModifiedHash();
-
-                }
-
-                _logger.info("Python node initialised.");
-                _outReader.inject("Python node initialised.");
-                
-                // Mark as successfully initialized by setting the description
-                synchronized (_signal) {
-                    _started = DateTime.now();
-                    _desc = "GraalVM Python Node";
-                    _signal.notifyAll();
-                }
-                
-            } catch (Exception e) {
-                _logger.error("Failed to initialise Python node: " + e.toString());
-                _outReader.inject("Failed to initialise Python node: " + e.toString());
-                handleException("Initialisation", e);
-                markFailed(e); // Mark node as failed
-                throw e; // Re-throw to signal failure
-            } finally {
-                _busy.unlock();
-            }
         } catch (Exception e) {
             _logger.error("Failed to initialise Python node: " + e.toString());
             _outReader.inject("Failed to initialise Python node: " + e.toString());
@@ -845,12 +834,7 @@ public class PyNode extends BaseDynamicNode {
      */
     @Service(name="pythonFunctions")
     public List<String> getPythonFunctions() {
-        _busy.lock();
-        try {
-            return new ArrayList<>(_pythonFunctions.keySet());
-        } finally {
-            _busy.unlock();
-        }
+        return new ArrayList<>(_pythonFunctions.keySet());
     }
 
     /**
@@ -906,7 +890,6 @@ public class PyNode extends BaseDynamicNode {
         final String functionKey = "eval" + (!Strings.isBlank(source) ? "_" + source : "") + "_" + _funcSeqNumber.getAndIncrement();
 
         try {
-            _busy.lock();
             _logger.info("Evaluating expression: " + expr);
 
             try {
@@ -936,7 +919,6 @@ public class PyNode extends BaseDynamicNode {
                 try { _pythonContext.leave(); } catch (Exception e) { /* ignore */ }
             }
         } finally {
-            _busy.unlock();
         }
     }
 
@@ -960,7 +942,6 @@ public class PyNode extends BaseDynamicNode {
         final String functionKey = "exec" + (!Strings.isBlank(source) ? "_" + source : "") + "_" + _funcSeqNumber.getAndIncrement();
 
         try {
-            _busy.lock();
             _logger.info("Executing code fragment" + (source != null ? " from " + source : ""));
 
             try {
@@ -1035,7 +1016,6 @@ public class PyNode extends BaseDynamicNode {
                 try { _pythonContext.leave(); } catch (Exception e) { /* ignore */ }
             }
         } finally {
-            _busy.unlock();
         }
     }
 
@@ -1059,63 +1039,58 @@ public class PyNode extends BaseDynamicNode {
     /**
      * Creates a custom lock for thread synchronization.
      * In the original Jython implementation, this worked around Jython threading issues.
-     * In the GraalVM implementation, this may not be needed but is kept for API compatibility.
+     * In the GraalVM implementation, this is no longer needed as GraalVM's Context
+     * provides its own thread-safety guarantees. This now returns a dummy lock for
+     * API compatibility.
      */
     private ReentrantLock getAReentrantLock() {
-        // In GraalVM, we don't need the complex locking mechanism used with Jython
-        // We can just use our instance lock
-        return _busy;
+        // Return a dummy lock for API compatibility
+        _logger.debug("getAReentrantLock() called - no longer needed with GraalVM threading model");
+        return new ReentrantLock();
     }
 
     /**
      * Destroys this node, releasing all resources.
      */
     private void destroy() {
-        _busy.lock();
-        try {
-            _outReader.inject("Destroying Python node...");
-            _logger.info("Destroying Python node...");
-            if (_closed) return;
-            _closed = true; // Mark as permanently closed
+        if (_closed) return;
+        _closed = true; // Mark as permanently closed
 
-            // Run Python cleanup functions first (if context is still valid)
-            if (_pythonContext != null) {
-                try {
-                    _pythonContext.enter();
-                    executePythonFunction("process_cleanup_functions");
-                } catch (Exception e) {
-                    handleException("Cleanup function execution", e);
-                } finally {
-                    try { _pythonContext.leave(); } catch (Exception le) { /* ignore */ }
-                }
+        // Run Python cleanup functions first (if context is still valid)
+        if (_pythonContext != null) {
+            try {
+                _pythonContext.enter();
+                executePythonFunction("process_cleanup_functions");
+            } catch (Exception e) {
+                handleException("Cleanup function execution", e);
+            } finally {
+                try { _pythonContext.leave(); } catch (Exception le) { /* ignore */ }
             }
-
-            // Close the toolkit (stops timers, closes connections, etc.)
-            if (_toolkit != null) {
-                Stream.safeClose(_toolkit);
-                _toolkit = null;
-            }
-
-            // Close the GraalVM context for this node
-            if (_pythonContext != null) {
-                try {
-                    _logger.info("Closing Python context for node {}", getName());
-                    _pythonContext.close(true); // true = cancel running executions
-                } catch (Exception e) {
-                    _logger.error("Error closing Python context for node " + getName(), e);
-                } finally {
-                   _pythonContext = null; // Ensure it's nullified
-                }
-            }
-
-            _pythonFunctions.clear();
-            reset(); // Reset state in BaseDynamicNode
-
-            _logger.info("Python node destroyed.");
-            _outReader.inject("Python node destroyed.");
-        } finally {
-            _busy.unlock();
         }
+
+        // Close the toolkit (stops timers, closes connections, etc.)
+        if (_toolkit != null) {
+            Stream.safeClose(_toolkit);
+            _toolkit = null;
+        }
+
+        // Close the GraalVM context for this node
+        if (_pythonContext != null) {
+            try {
+                _logger.info("Closing Python context for node {}", getName());
+                _pythonContext.close(true); // true = cancel running executions
+            } catch (Exception e) {
+                _logger.error("Error closing Python context for node " + getName(), e);
+            } finally {
+               _pythonContext = null; // Ensure it's nullified
+            }
+        }
+
+        _pythonFunctions.clear();
+        reset(); // Reset state in BaseDynamicNode
+
+        _logger.info("Python node destroyed.");
+        _outReader.inject("Python node destroyed.");
     }
 
     /**
