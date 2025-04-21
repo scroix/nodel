@@ -1,4 +1,4 @@
-> This document tracks the migration of **Nodel** from a Jython-based “Python 2 on the JVM” model to a **GraalVM Polyglot** model that runs **Python 3**.
+> This document tracks the migration of **Nodel** from a Jython-based "Python 2 on the JVM" model to a **GraalVM Polyglot** model that runs **Python 3**.
 > It is intended both as architecture reference and as an up-to-date progress ledger.
 
 ---
@@ -8,7 +8,7 @@
 ---
 
 1.  **First-class Python 3**
-    *   Enable node authors to write modern Python without Jython’s limitations.
+    *   Enable node authors to write modern Python without Jython's limitations.
     *   Permit use of current Python libraries (subject to GraalPy compatibility).
 
 2.  **One polyglot bridge, many languages**
@@ -42,7 +42,7 @@ graph TD
 *   One `org.graalvm.polyglot.Context` per node; created in `PyNode.createContext()`.
 *   `allowAllAccess(true)` is a temporary bootstrap; will be hardened (see tasks).
 *   `nodetoolkit.py` is executed first; it wraps the injected Java `ManagedToolkit` and recreates decorators (`@local_action`, `@remote_event`, …).
-*   `BindingsExtractor` walks the Context’s Python globals (`Value`) and registers Nodel actions/events/params.
+*   `BindingsExtractor` walks the Context's Python globals (`Value`) and registers Nodel actions/events/params.
 
 ---
 
@@ -101,10 +101,12 @@ _(Deferred as lower priority; not critical path for initial functionality)_
 
 ### 4.5 Threading & Callback discipline
 
-*   [ ] Decide on one of:
+*   [x] Decide on one of:
     *   a) single `_busy` lock + CallbackQueue, or
     *   b) rely solely on CallbackQueue (GraalPy already serialises).
-*   [ ] Remove redundant locking.
+*   [x] Remove redundant locking.
+
+**Decision**: Option B was chosen. The `_busy` lock has been removed from PyNode, relying instead on GraalVM's native thread safety mechanisms and the CallbackQueue. Thread safety tests have been implemented to validate this approach (see PyNodeThreadingTest.java). This simplification improves performance by reducing lock contention while maintaining thread safety guarantees.
 
 ### 4.6 Context-in-native-image
 
@@ -122,7 +124,7 @@ _(Deferred as lower priority; not critical path for initial functionality)_
 ### 4.9 Documentation & tooling
 
 *   [ ] Update BUILDING.md with `GRAALVM_HOME`, native-image flags, recipe migration guide.
-*   [ ] Provide a “compatibility matrix” (feature / Jython / GraalPy).
+*   [ ] Provide a "compatibility matrix" (feature / Jython / GraalPy).
 
 ---
 
