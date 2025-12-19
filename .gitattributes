@@ -9,10 +9,3 @@ entrypoint.sh text eol=lf
 # Windows batch files use CRLF
 *.bat text eol=crlf
 *.cmd text eol=crlf
-
-# Keep these binary
-*.jar binary
-*.png binary
-*.jpg binary
-*.gif binary
-*.ico binary
