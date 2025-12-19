@@ -121,6 +121,7 @@ The image includes a built-in health check that polls `/REST/` every 30 seconds.
 Notes
 =====
 
+* Trigger an image build manually: `gh workflow run docker-publish.yml --ref <branch> -f push_image=true`
 * Images are available for both `amd64` and `arm64` architectures
 * For service/daemon setup on the host, see the [wiki pages](https://github.com/museumsvictoria/nodel/wiki)
 * Drop [recipes](https://github.com/museumsvictoria/nodel-recipes) into the nodes folder to get started
