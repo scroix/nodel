@@ -1,0 +1,54 @@
+project:
+  name: nodel
+  description: Digital media control system for museums and galleries
+  license: MPL-2.0
+  links:
+    homepage: https://github.com/museumsvictoria/nodel
+    documentation: https://github.com/museumsvictoria/nodel/wiki
+  authors:
+    - Museums Victoria
+  inceptionYear: 2014
+  java:
+    groupId: org.nodel
+    artifactId: nodelhost
+    version: 21
+    mainClass: org.nodel.jyhost.Launch
+
+release:
+  github:
+    owner: scroix  # Change to museumsvictoria after testing
+    name: nodel
+    overwrite: true
+    changelog:
+      formatted: ALWAYS
+      preset: conventional-commits
+      contributors:
+        enabled: true
+    update:
+      enabled: true
+      sections:
+        - ASSETS
+
+distributions:
+  nodel:
+    type: SINGLE_JAR
+    stereotype: CLI
+    artifacts:
+      - path: nodel-jyhost/build/distributions/standalone/nodelhost.jar
+        transform: nodelhost.jar
+
+packagers:
+  brew:
+    active: ALWAYS
+    formulaName: nodel
+    repository:
+      owner: scroix  # Change to museumsvictoria after testing
+      name: homebrew-nodel
+      branch: main
+      commitMessage: "{{distributionName}} {{tagName}}"
+    commitAuthor:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
+    dependencies:
+      - openjdk@21
+    templateDirectory: src/jreleaser/templates/brew

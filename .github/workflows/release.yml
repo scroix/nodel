@@ -1,0 +1,90 @@
+# Creates GitHub Releases and updates Homebrew tap
+#
+# Triggers:
+#   - Version tags (v*): Full release with Homebrew update
+#   - Manual dispatch: Optional dry-run mode for testing
+#
+# Required secrets:
+#   - GH_PAT: Personal Access Token with repo scope for homebrew-nodel push
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual release)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION=$(grep "baseVersion = " build.gradle | sed "s/.*baseVersion = '\([^']*\)'.*/\1/")
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Build JAR
+        run: |
+          ./gradlew clean build :nodel-jyhost:unversioned
+          echo "Built artifacts:"
+          ls -la nodel-jyhost/build/distributions/standalone/
+
+      - name: Run JReleaser
+        uses: jreleaser/release-action@v2
+        with:
+          arguments: full-release
+        env:
+          JRELEASER_PROJECT_VERSION: ${{ steps.version.outputs.version }}
+          JRELEASER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          JRELEASER_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+
+      - name: Upload JReleaser logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jreleaser-logs
+          path: |
+            out/jreleaser/trace.log
+            out/jreleaser/output.properties
+
+      - name: Generate summary
+        if: success() && inputs.dry_run != true
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Published to:" >> $GITHUB_STEP_SUMMARY
+          echo "- [GitHub Releases](https://github.com/scroix/nodel/releases)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Homebrew Tap](https://github.com/scroix/homebrew-nodel)" >> $GITHUB_STEP_SUMMARY
