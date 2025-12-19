@@ -150,10 +150,6 @@ To set a custom hostname:
 docker run -d --name nodel --hostname my-nodel-host -p 8085:8085 \
   ghcr.io/museumsvictoria/nodel
 
-# Or via environment variable
-docker run -d --name nodel -e HOSTNAME=my-nodel-host -p 8085:8085 \
-  ghcr.io/museumsvictoria/nodel
-
 # Or via JVM system property
 docker run -d --name nodel -p 8085:8085 \
   -e JAVA_OPTS="-Dnodel.hostname=my-nodel-host" \
