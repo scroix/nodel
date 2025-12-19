@@ -5,12 +5,16 @@
 # Usage:
 #   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/museumsvictoria/nodel/master/install.sh)"
 #
+# With options:
+#   PORT=8086 NAME=nodel2 IMAGE=ghcr.io/scroix/nodel:latest \
+#     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/museumsvictoria/nodel/master/install.sh)"
+#
 set -e
 
-# Defaults
-PORT=8085
-NAME="nodel"
-IMAGE="ghcr.io/museumsvictoria/nodel:latest"
+# Defaults (override with environment variables)
+PORT=${PORT:-8085}
+NAME=${NAME:-"nodel"}
+IMAGE=${IMAGE:-"ghcr.io/museumsvictoria/nodel:latest"}
 
 # Colours (if terminal supports them)
 if [ -t 1 ]; then
