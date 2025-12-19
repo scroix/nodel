@@ -2,17 +2,6 @@
 # Build stage
 FROM eclipse-temurin:21-jdk AS builder
 
-# Optional: CI can pass these build args to override git-detected values.
-# Empty defaults let git detection work when args aren't provided.
-ARG GIT_COMMIT
-ARG GIT_BRANCH
-ARG GIT_REV
-ARG GIT_ORIGIN
-ENV NODEL_BUILD_ID="${GIT_COMMIT}" \
-    NODEL_BUILD_BRANCH="${GIT_BRANCH}" \
-    NODEL_BUILD_REV="${GIT_REV}" \
-    NODEL_BUILD_ORIGIN="${GIT_ORIGIN}"
-
 # Git enables build metadata (branch, revision) from the checked-out repo.
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
