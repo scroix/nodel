@@ -1,27 +1,45 @@
-# Running Nodel with Docker
+<div align="center">
 
-## Quick Start
+  <img src="http://nodel.io/media/1066/logo-nodel.png" alt="Nodel logo" height="110">
 
-Run Nodel with a single command:
+  <h3>Nodel, on Docker.</h3>
+
+  <p>
+    <a href="https://github.com/museumsvictoria/nodel/pkgs/container/nodel">
+      <img src="https://img.shields.io/badge/registry-ghcr.io-blue" alt="Container Registry">
+    </a>
+  </p>
+
+</div>
+
+##### Run Nodel anywhere Docker runs.
+
+The official container image packages everything needed to get started in seconds.
+
+###### Why Docker?
+
+* No Java installation required on the host
+* Consistent environment across all deployments
+* Easy updates with a single pull command
+* Isolated from host system dependencies
+
+-------------
+
+Quick Start
+===========
+
+The fastest way to get Nodel running is with the install script:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/museumsvictoria/nodel/master/install.sh)"
 ```
 
-Web UI available at http://localhost:8085
+This creates a persistent container named `nodel` on port 8085. Once running, open http://localhost:8085 in your browser.
 
-Override defaults with environment variables:
+> **Tip:** Customise with `PORT`, `NAME`, or `IMAGE` env vars before the command.
 
-```bash
-PORT=8086 NAME=nodel2 IMAGE=ghcr.io/museumsvictoria/nodel:2.3.0 \
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/museumsvictoria/nodel/master/install.sh)"
-```
-
-The installer pulls the image and runs it in a self-contained container. Node configurations are stored inside the container.
-
-## Manual Docker Run
-
-For more control, run Docker commands directly.
+Running Nodel
+=============
 
 Pull the image:
 
@@ -29,136 +47,66 @@ Pull the image:
 docker pull ghcr.io/museumsvictoria/nodel:latest
 ```
 
-For interactive testing (press Enter to shutdown):
+Interactive (Ctrl+C to stop):
 
 ```bash
 docker run --rm -it -p 8085:8085 ghcr.io/museumsvictoria/nodel
 ```
 
-For background/daemon mode:
+Detached with auto-restart:
 
 ```bash
 docker run -d --name nodel -p 8085:8085 --restart unless-stopped \
   ghcr.io/museumsvictoria/nodel
 ```
 
-Pass Nodel arguments directly after the image name:
+Pass Nodel arguments after the image name:
 
 ```bash
 docker run --rm -it -p 8086:8086 ghcr.io/museumsvictoria/nodel -p 8086
 ```
 
-## Persistent Data
+Development
+===========
 
-To persist node configurations on the host filesystem, add volume mounts:
+Build and run using Docker Compose:
 
 ```bash
-docker run -d --name nodel -p 8085:8085 --restart unless-stopped \
+docker compose up --build -d
+```
+
+> **Tip:** Use a `docker-compose.override.yml` to swap in a local image or tweak settings without modifying the base file.
+
+Data Persistence
+================
+
+Node configurations are stored inside the container by default. Named containers retain data across restarts, but it's lost if the container is removed (`docker rm`). Mount host directories as volumes to keep data independent of the container lifecycle.
+
+Mount your nodes folder:
+
+```bash
+docker run -d --name nodel -p 8085:8085 \
+  -v ./nodes:/app/nodes \
+  ghcr.io/museumsvictoria/nodel
+```
+
+Or mount multiple directories:
+
+```bash
+docker run -d --name nodel -p 8085:8085 \
   -v ./nodes:/app/nodes \
   -v ./recipes:/app/recipes \
-  -v ./custom:/app/custom \
   ghcr.io/museumsvictoria/nodel
 ```
 
-This mimics the traditional `java -jar nodel.jar` behaviour where directories appear in your working folder.
+> **Tip:** Use `--user 0 -e NODEL_FIX_PERMS=1` if mounted directories have permission issues.
 
-## Configuration
+Configuration
+=============
 
-Nodel uses `bootstrap.json` for configuration. Mount your config file:
+### JVM options
 
-```bash
-docker run -d --name nodel -p 8085:8085 \
-  -v ./bootstrap.json:/app/bootstrap.json \
-  -v ./nodes:/app/nodes \
-  ghcr.io/museumsvictoria/nodel
-```
-
-### Example bootstrap.json
-
-```json
-{
-  "NodelHostPort": 8085,
-  "disableAdvertisements": false,
-  "nodelRoot": "nodes",
-  "recipesRoot": "recipes",
-  "logsDirectory": "logs",
-  "cacheDirectory": "cache"
-}
-```
-
-### Configuration Options
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `NodelHostPort` | 8085 | HTTP port for web UI and REST API |
-| `disableAdvertisements` | false | Disable multicast discovery |
-| `nodelRoot` | nodes | Directory containing node scripts |
-| `recipesRoot` | recipes | Directory containing recipe templates |
-| `logsDirectory` | logs | Directory for log files |
-| `cacheDirectory` | cache | Directory for cache files |
-| `networkInterfaces` | (all) | Specific network interfaces to bind |
-| `inclFilters` | (none) | Only host nodes matching patterns |
-| `exclFilters` | (none) | Exclude nodes matching patterns |
-
-Run `docker run --rm ghcr.io/museumsvictoria/nodel --help` for full options.
-
-## Volumes
-
-| Path | Purpose |
-|------|---------|
-| `/app/nodes` | Node scripts and configurations |
-| `/app/recipes` | Recipe templates |
-| `/app/custom` | User customizations |
-| `/app/logs` | Log files (optional) |
-| `/app/cache` | Cache files (optional) |
-| `/app/bootstrap.json` | Configuration file (optional) |
-
-## Permissions
-
-The container runs as a non-root `nodel` user by default (UID/GID 1000). If you bind-mount host folders with incompatible ownership/permissions, either adjust the host permissions or run the container as root and enable permission fixing:
-
-```bash
-docker run -d --name nodel -p 8085:8085 --user 0 -e NODEL_FIX_PERMS=1 \
-  -v ./nodes:/app/nodes \
-  ghcr.io/museumsvictoria/nodel
-```
-
-## Network Mode
-
-Nodel uses multicast discovery (224.0.0.252:5354) for node discovery.
-
-- Docker Desktop (macOS/Windows): does not provide true `--network host`, so discovery across the host LAN is typically unavailable. Use bridge mode with port mappings (the default).
-- Linux: you can use host networking for discovery on the host LAN:
-
-```bash
-docker run -d --name nodel --network host ghcr.io/museumsvictoria/nodel
-```
-
-## Hostname Configuration
-
-Nodel reports its hostname in the web UI and discovery protocol. In Docker, the hostname is determined in this order:
-
-1. DNS-resolvable hostname (normal operation)
-2. `-Dnodel.hostname=` system property
-3. `HOSTNAME` environment variable (Docker sets this automatically)
-4. Container ID (fallback)
-
-To set a custom hostname:
-
-```bash
-# Using Docker's --hostname flag
-docker run -d --name nodel --hostname my-nodel-host -p 8085:8085 \
-  ghcr.io/museumsvictoria/nodel
-
-# Or via JVM system property
-docker run -d --name nodel -p 8085:8085 \
-  -e JAVA_OPTS="-Dnodel.hostname=my-nodel-host" \
-  ghcr.io/museumsvictoria/nodel
-```
-
-## JVM Tuning
-
-Adjust JVM settings via the `JAVA_OPTS` environment variable:
+Tune Java memory settings with the `JAVA_OPTS` environment variable:
 
 ```bash
 docker run -d --name nodel -p 8085:8085 \
@@ -166,18 +114,16 @@ docker run -d --name nodel -p 8085:8085 \
   ghcr.io/museumsvictoria/nodel
 ```
 
-Default: `-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0`
+Default JVM options: `-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0`
 
-## Health Check
+### Health check
 
-The container includes a health check that polls the REST API every 30 seconds. It automatically detects the port from Nodel's `.lastHTTPPort` file, so it works regardless of your bootstrap.json configuration.
+The image includes a built-in health check that polls `/REST/` every 30 seconds. It automatically detects the HTTP port from `.lastHTTPPort` if present.
 
-## Development
+Notes
+=====
 
-For local development and building from source, use `docker-compose.yml`:
-
-```bash
-docker compose up --build -d
-```
-
-This builds from the local source and runs Nodel in self-contained mode.
+* Images are available for both `amd64` and `arm64` architectures
+* The container runs as a non-root user by default for security
+* For service/daemon setup on the host, see the [wiki pages](https://github.com/museumsvictoria/nodel/wiki)
+* Drop [recipes](https://github.com/museumsvictoria/nodel-recipes) into the nodes folder to get started
