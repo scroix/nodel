@@ -99,8 +99,6 @@ docker run -d --name nodel -p 8085:8085 \
   ghcr.io/museumsvictoria/nodel
 ```
 
-> **Tip:** Use `--user 0 -e NODEL_FIX_PERMS=1` if mounted directories have permission issues.
-
 Configuration
 =============
 
@@ -124,6 +122,5 @@ Notes
 =====
 
 * Images are available for both `amd64` and `arm64` architectures
-* The container runs as a non-root user by default for security
 * For service/daemon setup on the host, see the [wiki pages](https://github.com/museumsvictoria/nodel/wiki)
 * Drop [recipes](https://github.com/museumsvictoria/nodel-recipes) into the nodes folder to get started

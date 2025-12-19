@@ -48,18 +48,12 @@ LABEL org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${GIT_COMMIT}"
 
-# Install tini for proper signal handling and su-exec for privilege dropping.
-RUN apk add --no-cache tini su-exec
-
-# Create non-root user for security (UID/GID 1000 for compatibility with host volume mounts)
-RUN addgroup -g 1000 nodel && adduser -u 1000 -G nodel -h /app -D nodel
+# Install tini for proper signal handling.
+RUN apk add --no-cache tini
 
 WORKDIR /app
 COPY --from=builder /build/nodelhost.jar .
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
-
-RUN mkdir -p nodes recipes custom logs cache .nodel && \
-    chown -R nodel:nodel /app
 
 # JVM tuning: UseContainerSupport (default since Java 10) enables container-aware memory limits;
 # RAM percentages cap heap relative to container memory to reduce OOM risk
@@ -71,7 +65,4 @@ EXPOSE 8085
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -q --spider http://localhost:$(cat /app/.lastHTTPPort 2>/dev/null || echo 8085)/REST/
 
-# Entrypoint handles optional permission fixing on mounted volumes.
-# Configuration: mount bootstrap.json to /app/bootstrap.json (see DOCKER.md)
-# Note: Container starts as root; entrypoint drops to 'nodel' user via su-exec.
-ENTRYPOINT ["/sbin/tini","--","/entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "--", "/entrypoint.sh"]
