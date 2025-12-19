@@ -84,5 +84,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Entrypoint handles optional permission fixing on mounted volumes.
 # Configuration: mount bootstrap.json to /app/bootstrap.json (see DOCKER.md)
-USER nodel
+# Note: Container starts as root; entrypoint drops to 'nodel' user via su-exec.
 ENTRYPOINT ["/sbin/tini","--","/entrypoint.sh"]
