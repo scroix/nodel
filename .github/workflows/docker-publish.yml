@@ -1,15 +1,15 @@
 # Publishes Docker images to GitHub Container Registry (GHCR)
-# Triggers: version tags (v*) or manual dispatch (build-only by default)
+#
+# Triggers:
+#   - Version tags (v*): Builds and pushes automatically
+#   - Manual dispatch: Build any branch, optional push
 #
 # Image naming: ghcr.io/<owner>/nodel:<tag>
-# Works on both fork (scroix/nodel) and upstream (museumsvictoria/nodel)
 
 name: Docker | Build and Publish
 
 on:
   push:
-    branches:
-      - feature/docker-support
     tags:
       - 'v*'
   workflow_dispatch:
@@ -120,7 +120,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_image == 'true' }}
+          push: ${{ github.ref_type == 'tag' || inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -134,11 +134,10 @@ jobs:
         run: |
           echo "## Docker Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          PUSH_ENABLED="${{ github.event_name != 'workflow_dispatch' || inputs.push_image == 'true' }}"
-          if [ "$PUSH_ENABLED" == "true" ]; then
+          if [[ "${{ github.ref_type }}" == "tag" || "${{ inputs.push_image }}" == "true" ]]; then
             echo "✅ **Status:** Image pushed to registry" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⏸️ **Status:** Image built but NOT pushed (manual dispatch with push_image=false)" >> $GITHUB_STEP_SUMMARY
+            echo "⏸️ **Status:** Image built but NOT pushed" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
