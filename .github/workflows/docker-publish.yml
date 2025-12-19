@@ -4,6 +4,10 @@
 #   - Version tags (v*): Builds and pushes automatically
 #   - Manual dispatch: Build any branch, optional push
 #
+# Manual builds via CLI (useful for testing branches):
+#   gh workflow run docker-publish.yml --ref <branch> --repo <owner>/nodel
+#   gh workflow run docker-publish.yml --ref <branch> --repo <owner>/nodel -f push_image=true
+#
 # Image naming: ghcr.io/<owner>/nodel:<tag>
 
 name: Docker | Build and Publish
