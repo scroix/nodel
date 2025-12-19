@@ -10,7 +10,14 @@ Run Nodel with a single command:
 
 Web UI available at http://localhost:8085
 
-The installer pulls the latest Nodel image and runs it in a self-contained container. Node configurations are stored inside the container.
+Override defaults with environment variables:
+
+```bash
+PORT=8086 NAME=nodel2 IMAGE=ghcr.io/museumsvictoria/nodel:2.3.0 \
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/museumsvictoria/nodel/master/install.sh)"
+```
+
+The installer pulls the image and runs it in a self-contained container. Node configurations are stored inside the container.
 
 ## Manual Docker Run
 
