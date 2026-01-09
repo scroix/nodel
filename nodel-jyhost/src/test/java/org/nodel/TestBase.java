@@ -311,9 +311,10 @@ public abstract class TestBase {
             "@local_action({'title': 'Send Ping', 'schema': {'type': 'string'}})\n" +
             "def sendPing(arg):\n" +
             "    local_event_Ping.emit(arg)\n" +
-            "    console.info('Ping sent: %s' % arg)\n\n" +
+            "    console.info('Ping sent: %s' % arg)\n" +
+            "    return True\n\n" +
             "def main():\n" +
-            "    console.info('Producer started')\n";
+            "    console.info('Producer node started')\n";
 
         public static final String CONSUMER =
             "def remote_event_IncomingPing(arg):\n" +
@@ -321,7 +322,7 @@ public abstract class TestBase {
             "    local_event_Received.emit(arg)\n\n" +
             "local_event_Received = LocalEvent({'title': 'Received', 'schema': {'type': 'string'}})\n\n" +
             "def main():\n" +
-            "    console.info('Consumer started')\n";
+            "    console.info('Consumer node started')\n";
 
         public static final String WITH_PARAMS =
             "param_testParam = Parameter({'title': 'Test Parameter', 'schema': {'type': 'string'}})\n" +

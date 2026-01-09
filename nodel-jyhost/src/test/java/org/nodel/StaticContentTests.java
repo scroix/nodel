@@ -83,11 +83,7 @@ public class StaticContentTests extends TestBase {
     }
 
     // ===== Page Structure =====
-
-    @Test
-    public void testNavbarExists() {
-        assertNotNull(page.querySelector(".navbar"), "Navbar should be present");
-    }
+    // Note: Navbar existence test is in NavigationTests
 
     @Test
     public void testActiveNavigationItem() {

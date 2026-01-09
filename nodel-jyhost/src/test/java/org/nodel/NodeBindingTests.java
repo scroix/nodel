@@ -23,33 +23,12 @@ public class NodeBindingTests extends TestBase {
     private static final String PRODUCER_NODE = "E2E Binding Producer";
     private static final String CONSUMER_NODE = "E2E Binding Consumer";
 
-    // Producer: has action that emits event
-    private static final String PRODUCER_SCRIPT =
-        "local_event_Ping = LocalEvent({'title': 'Ping', 'schema': {'type': 'string'}})\n\n" +
-        "@local_action({'title': 'Send Ping', 'schema': {'type': 'string'}})\n" +
-        "def sendPing(arg):\n" +
-        "    local_event_Ping.emit(arg)\n" +
-        "    console.info('Ping sent: %s' % arg)\n" +
-        "    return True\n\n" +
-        "def main():\n" +
-        "    console.info('Producer node started')\n";
-
-    // Consumer: has remote event that receives from producer
-    // Remote events are declared as functions with remote_event_ prefix (declarative)
-    private static final String CONSUMER_SCRIPT =
-        "def remote_event_IncomingPing(arg):\n" +
-        "    console.info('Received ping: %s' % arg)\n" +
-        "    local_event_Received.emit(arg)\n\n" +
-        "local_event_Received = LocalEvent({'title': 'Received', 'schema': {'type': 'string'}})\n\n" +
-        "def main():\n" +
-        "    console.info('Consumer node started')\n";
-
     @BeforeAll
     public static void setup() {
         initBrowser();
-        // Create both nodes
-        boolean producerCreated = createTestNode(PRODUCER_NODE, PRODUCER_SCRIPT);
-        boolean consumerCreated = createTestNode(CONSUMER_NODE, CONSUMER_SCRIPT);
+        // Create both nodes using centralized scripts from TestBase
+        boolean producerCreated = createTestNode(PRODUCER_NODE, Scripts.PRODUCER);
+        boolean consumerCreated = createTestNode(CONSUMER_NODE, Scripts.CONSUMER);
         assumeTrue(producerCreated && consumerCreated,
             "Both producer and consumer nodes must be created");
     }
@@ -134,7 +113,7 @@ public class NodeBindingTests extends TestBase {
 
     @Test
     @Order(20)
-    public void testEventPropagation() throws InterruptedException {
+    public void testEventPropagation() {
         String uniqueValue = "ping-" + System.currentTimeMillis();
 
         // Trigger producer's action which emits event
@@ -145,7 +124,7 @@ public class NodeBindingTests extends TestBase {
         assertEquals(200, trigger.status(), "Producer action should succeed");
 
         // Wait for event propagation across nodes
-        Thread.sleep(2000);
+        page.waitForTimeout(2000);
 
         // Check consumer's console for received message
         APIResponse consumerConsole = apiGet(
@@ -158,7 +137,7 @@ public class NodeBindingTests extends TestBase {
 
     @Test
     @Order(21)
-    public void testConsumerEmitsLocalEvent() throws InterruptedException {
+    public void testConsumerEmitsLocalEvent() {
         String uniqueValue = "propagate-" + System.currentTimeMillis();
 
         // Trigger producer
@@ -166,7 +145,7 @@ public class NodeBindingTests extends TestBase {
             "{\"arg\": \"" + uniqueValue + "\"}");
 
         // Wait for event propagation
-        Thread.sleep(2000);
+        page.waitForTimeout(2000);
 
         // Check consumer's activity for emitted Received event
         APIResponse activity = apiGet(
@@ -179,14 +158,14 @@ public class NodeBindingTests extends TestBase {
 
     @Test
     @Order(22)
-    public void testProducerConsoleShowsSentPing() throws InterruptedException {
+    public void testProducerConsoleShowsSentPing() {
         String uniqueValue = "verify-send-" + System.currentTimeMillis();
 
         // Trigger producer
         apiPost("/nodes/" + encode(PRODUCER_NODE) + "/actions/sendPing/call",
             "{\"arg\": \"" + uniqueValue + "\"}");
 
-        Thread.sleep(500);
+        page.waitForTimeout(500);
 
         // Verify producer logged the send
         APIResponse producerConsole = apiGet(

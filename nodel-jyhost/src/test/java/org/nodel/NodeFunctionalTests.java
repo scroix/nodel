@@ -135,7 +135,7 @@ public class NodeFunctionalTests extends TestBase {
             "{\"arg\": \"" + uniqueArg + "\"}");
 
         // Give the node a moment to process
-        try { Thread.sleep(500); } catch (InterruptedException e) { }
+        page.waitForTimeout(500);
 
         // Check console for log message
         APIResponse console = apiGet("/nodes/" + encode(TEST_NODE) + "/console?from=0&max=100");
@@ -162,7 +162,7 @@ public class NodeFunctionalTests extends TestBase {
             "{\"arg\": \"" + uniqueArg + "\"}");
 
         // Give the node a moment to process
-        try { Thread.sleep(500); } catch (InterruptedException e) { }
+        page.waitForTimeout(500);
 
         // Check activity feed for emitted event
         APIResponse activity = apiGet("/nodes/" + encode(TEST_NODE) + "/activity?from=0");
@@ -224,7 +224,7 @@ public class NodeFunctionalTests extends TestBase {
         apiPost("/nodes/" + encode(TEST_NODE) + "/actions/simpleAction/call", "{}");
 
         // Give the node a moment to process
-        try { Thread.sleep(500); } catch (InterruptedException e) { }
+        page.waitForTimeout(500);
 
         // Verify activity has new entries (response should be longer or different)
         APIResponse after = apiGet("/nodes/" + encode(TEST_NODE) + "/activity?from=0");
@@ -255,7 +255,7 @@ public class NodeFunctionalTests extends TestBase {
         int status = restart.status();
 
         // Wait for restart to complete
-        try { Thread.sleep(3000); } catch (InterruptedException e) { }
+        page.waitForTimeout(3000);
 
         // Verify node is still responsive
         APIResponse actions = apiGet("/nodes/" + encode(TEST_NODE) + "/actions");

@@ -25,24 +25,10 @@ public class NodeManagementTests extends TestBase {
 
     // ===== Node List API Tests =====
 
+    // Note: Node list and JSON format tests are in RestApiTests
+
     @Test
     @Order(1)
-    public void testNodeListEndpoint() {
-        APIResponse response = apiGet("/nodes");
-        assertEquals(200, response.status(), "Node list endpoint should return 200");
-    }
-
-    @Test
-    @Order(2)
-    public void testNodeListIsJson() {
-        APIResponse response = apiGet("/nodes");
-        String body = response.text();
-        assertTrue(body.startsWith("[") || body.startsWith("{"),
-            "Node list should return JSON");
-    }
-
-    @Test
-    @Order(3)
     public void testAllNodesEndpoint() {
         APIResponse response = apiGet("/allNodes");
         assertEquals(200, response.status(), "All nodes endpoint should return 200");
@@ -74,28 +60,6 @@ public class NodeManagementTests extends TestBase {
             "Discovery endpoint should return 200 or 204");
     }
 
-    // ===== Version/Diagnostics Tests =====
-
-    @Test
-    @Order(20)
-    public void testDiagnosticsEndpoint() {
-        APIResponse response = apiGet("/diagnostics");
-        assertEquals(200, response.status(), "Diagnostics endpoint should be available");
-    }
-
-    // ===== UI Element Tests =====
-
-    @Test
-    @Order(25)
-    public void testAddNodeAreaExists() {
-        ElementHandle addArea = page.querySelector(".nodel-add");
-        assertNotNull(addArea, "Node add area (.nodel-add) should exist");
-    }
-
-    @Test
-    @Order(26)
-    public void testListGroupExists() {
-        ElementHandle listGroup = page.querySelector(".list-group");
-        assertNotNull(listGroup, "List group container for nodes should exist");
-    }
+    // Note: Diagnostics tests are in RestApiTests
+    // Note: UI element tests (.nodel-add, .list-group) are in StaticContentTests
 }

@@ -29,13 +29,6 @@ public class RestApiTests extends TestBase {
         APIResponse response = apiGet("/nodes");
         assertEquals(200, response.status(), "GET /REST/nodes should return 200");
         String body = response.text();
-        assertTrue(body.startsWith("[") || body.startsWith("{"), "Response should be JSON");
-    }
-
-    @Test
-    public void testGetNodesReturnsJson() {
-        APIResponse response = apiGet("/nodes");
-        String body = response.text();
         // Nodes can return array [] or object {} depending on configuration
         assertTrue(body.startsWith("[") || body.startsWith("{"),
             "GET /REST/nodes should return JSON (array or object)");

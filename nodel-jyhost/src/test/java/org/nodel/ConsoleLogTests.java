@@ -71,34 +71,8 @@ public class ConsoleLogTests extends TestBase {
         assertEquals(200, response.status(), "Logs with from and max parameters should return 200");
     }
 
-    // ===== Diagnostics Tests =====
-
-    @Test
-    public void testDiagnosticsEndpoint() {
-        APIResponse response = apiGet("/diagnostics");
-        assertEquals(200, response.status(), "Diagnostics endpoint should return 200");
-    }
-
-    @Test
-    public void testDiagnosticsContainsMetrics() {
-        APIResponse response = apiGet("/diagnostics");
-        String body = response.text();
-        assertTrue(body.length() > 50, "Diagnostics should contain system metrics data");
-    }
-
-    @Test
-    public void testDiagnosticsPageExists() {
-        APIResponse response = page.request().get(BASE_URL + "/diagnostics.xml");
-        assertEquals(200, response.status(), "Diagnostics page should exist");
-    }
-
     // ===== Moment.js Time Formatting (used for log display) =====
-
-    @Test
-    public void testMomentJsLoaded() {
-        Object result = page.evaluate("() => typeof moment !== 'undefined'");
-        assertEquals(true, result, "Moment.js should be loaded for time formatting");
-    }
+    // Note: Moment.js loading is tested in StaticContentTests; here we test formatting
 
     @Test
     public void testMomentJsFormatting() {
