@@ -163,14 +163,15 @@ tasks.register('startNodelhost') {
             // Windows: Start java directly with stdin pipe to keep process alive
             pb = new ProcessBuilder(
                 'java', '-cp', sourceSets.main.runtimeClasspath.asPath,
-                '-ea', 'org.nodel.jyhost.Launch', '-p', '18085'
+                '-ea', '-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance',
+                'org.nodel.jyhost.Launch', '-p', '18085'
             )
             pb.redirectInput(ProcessBuilder.Redirect.PIPE)
         } else {
             // Unix: Use tail -f /dev/null to keep stdin open (prevents auto-shutdown)
             pb = new ProcessBuilder(
                 'bash', '-c',
-                "tail -f /dev/null | java -cp '${sourceSets.main.runtimeClasspath.asPath}' -ea org.nodel.jyhost.Launch -p 18085"
+                "tail -f /dev/null | java -cp '${sourceSets.main.runtimeClasspath.asPath}' -ea -Dorg.nodel.discovery.impl='org.nodel.discovery.LocalAutoDNS;instance' org.nodel.jyhost.Launch -p 18085"
             )
         }
         pb.directory(tempDir)
