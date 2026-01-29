@@ -532,20 +532,16 @@ var duplicateNode = function(sourceNodeUrl, newNodeName, options, progressCallba
           return;
         }
 
-        // Step 4: Filter and copy files
+        // Step 4: Filter and copy files (script.py last to trigger node restart after all files are in place)
         var includeNodeConfig = options.includeNodeConfig;
         var filesToCopy = files.filter(function(f) {
-          if (!shouldCopyFile(f.path)) return false;
-          if (!includeNodeConfig && f.path === 'nodeConfig.json') return false;
-          return true;
+          return shouldCopyFile(f.path) && (includeNodeConfig || f.path !== 'nodeConfig.json');
+        }).sort(function(a, b) {
+          // script.py should be copied last
+          if (a.path === 'script.py') return 1;
+          if (b.path === 'script.py') return -1;
+          return 0;
         });
-        // Ensure script.py is copied last
-        var scriptFiles = [];
-        var otherFiles = [];
-        filesToCopy.forEach(function(f) {
-          (f.path === 'script.py' ? scriptFiles : otherFiles).push(f);
-        });
-        filesToCopy = otherFiles.concat(scriptFiles);
         copyFilesSequentially(sourceNodeUrl, newNodeUrl, filesToCopy)
           .then(function(results) {
             if (results.failed.length > 0) {
@@ -2162,6 +2158,7 @@ var setEvents = function(){
       window.open(address, '_blank');
     }
   });
+
   // Unified template search for add node modal
   var RECIPES_LIST_TTL_MS = 60 * 1000;
   var recipesListCache = {data: null, fetchedAtMs: 0, xhr: null};
