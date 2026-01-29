@@ -34,15 +34,19 @@ public class LocalAutoDNS extends AutoDNS {
     }
 
     /**
-     * Resolves any node to the local TCP address.
+     * Resolves an advertised node to the local TCP address.
      * Unlike the multicast implementation, this always returns localhost
      * since LocalAutoDNS only tracks nodes within the same process.
      *
-     * @param node the node name (ignored - all nodes resolve to localhost)
-     * @return NodeAddress pointing to 127.0.0.1 with the current TCP port, or null if TCP is not configured
+     * @param node the node name
+     * @return NodeAddress pointing to 127.0.0.1 with the current TCP port, or null if not advertised or TCP is not configured
      */
     @Override
     public NodeAddress resolveNodeAddress(SimpleName node) {
+        if (_advertisements.get(node) == null) {
+            _logger.debug("Cannot resolve node address for '{}': node is not advertised", node);
+            return null;
+        }
         int tcpPort = Nodel.getTCPPort();
         if (tcpPort <= 0) {
             _logger.warn("Cannot resolve node address for '{}': TCP port is not configured (port={})", node, tcpPort);
@@ -88,12 +92,34 @@ public class LocalAutoDNS extends AutoDNS {
 
     private List<String> buildHttpAddresses() {
         String[] httpAddresses = Nodel.getHTTPAddresses();
-        if (httpAddresses != null && httpAddresses.length > 0) {
+        if (httpAddresses != null && httpAddresses.length > 0 && !isDefaultHttpAddresses(httpAddresses)) {
             return Arrays.asList(httpAddresses);
         }
-        String fallback = String.format("http://127.0.0.1:%s%s", Nodel.getHTTPPort(), Nodel.getHTTPSuffix());
+        int httpPort = Nodel.getHTTPPort();
+        if (httpPort > 0) {
+            String fallback = String.format("http://127.0.0.1:%s%s", httpPort, Nodel.getHTTPSuffix());
+            _logger.debug("HTTP addresses not configured; using fallback: {}", fallback);
+            return Arrays.asList(fallback);
+        }
+        if (httpAddresses != null && httpAddresses.length > 0) {
+            _logger.debug("HTTP addresses not configured and HTTP port is unset; using existing addresses");
+            return Arrays.asList(httpAddresses);
+        }
+        String fallback = String.format("http://127.0.0.1%s", Nodel.getHTTPSuffix());
         _logger.debug("HTTP addresses not configured; using fallback: {}", fallback);
         return Arrays.asList(fallback);
+    }
+
+    private static boolean isDefaultHttpAddresses(String[] httpAddresses) {
+        if (httpAddresses.length != 1) {
+            return false;
+        }
+        String address = httpAddresses[0];
+        if (address == null) {
+            return true;
+        }
+        String trimmed = address.trim();
+        return "http://127.0.0.1".equals(trimmed) || "http://127.0.0.1/".equals(trimmed);
     }
 
     /**
