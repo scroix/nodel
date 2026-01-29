@@ -779,7 +779,19 @@ div.nodel-charts {
     align-items: center;
     padding: (@padding-base-vertical * 0.75) @padding-base-horizontal;
     border-bottom: 1px solid @panel-default-border;
+    border-radius: @panel-border-radius @panel-border-radius 0 0;
     font-size: @font-size-small;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+
+    &:hover {
+      box-shadow: inset 0 0 0 1px fade(@brand-danger, 50%);
+
+      .card-change {
+        color: @brand-danger;
+        opacity: 1;
+      }
+    }
   }
 
   .card-type {
@@ -789,10 +801,7 @@ div.nodel-charts {
   .card-change {
     color: @text-muted;
     opacity: 0.6;
-    &:hover {
-      color: @brand-danger;
-      opacity: 1;
-    }
+    transition: color 0.15s ease-in-out, opacity 0.15s ease-in-out;
   }
 
   .card-body {

@@ -2145,8 +2145,8 @@ var setEvents = function(){
     refreshRecipesList(true);
   });
 
-  // Handle "Change" click on selection card - return to search mode
-  $('body').on('click', '.template-selection-card .card-change', function(e) {
+  // Handle header click on selection card - return to search mode
+  $('body').on('click', '.template-selection-card .card-header', function(e) {
     e.preventDefault();
     var input = $(this).closest('.template-selection-card').siblings().find('.unified-template-search');
     clearTemplateSelection(input, true);
