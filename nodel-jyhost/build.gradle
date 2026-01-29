@@ -104,41 +104,7 @@ dependencies {
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
 }
 
-/*
- * =============================================================================
- * E2E / INTEGRATION TEST INFRASTRUCTURE
- * =============================================================================
- *
- * Tests run a dedicated Nodel instance on port 18085 (not the default 8085)
- * in a temporary 'nodelhost-temp' directory for isolation.
- *
- * RUNNING TESTS:
- *   ./gradlew :nodel-jyhost:integrationTest    # API and smoke tests
- *   ./gradlew :nodel-jyhost:e2eTest            # Browser-based UI tests
- *
- * VISUAL DEBUGGING (see browser during E2E tests):
- *   Unix:
- *     HEADED=1 SLOWMO=500 ./gradlew :nodel-jyhost:e2eTest --rerun
- *   PowerShell:
- *     $env:HEADED=1; $env:SLOWMO=500; ./gradlew :nodel-jyhost:e2eTest --rerun
- *
- * WHEN TESTS FAIL:
- *   1. Check nodelhost-temp/output.log and error.log for server issues
- *   2. Re-run with HEADED=1 and/or PWDEBUG=1 to watch/interact with the browser
- *   3. Check build/reports/tests/ for JUnit HTML reports
- *   4. CI uploads failure artifacts (logs + reports) automatically
- *
- * SKIPPING TESTS:
- *   ./gradlew build -x test                    # Skip all tests
- *   ./gradlew build -x integrationTest -x e2eTest  # Skip only Playwright tests
- *
- * DISCOVERY MODE (tests):
- *   By default, tests use LocalAutoDNS for deterministic discovery results.
- *   To exercise real multicast discovery, set:
- *     NODEL_TEST_DISCOVERY=1 ./gradlew :nodel-jyhost:integrationTest --tests org.nodel.DiscoverySmokeTests
- *
- * =============================================================================
- */
+// Test infrastructure documentation moved to BUILDING.md (see "TESTING").
 def nodelProcess = null
 def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
 def discoveryEnv = System.getenv('NODEL_TEST_DISCOVERY')
