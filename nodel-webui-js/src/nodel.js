@@ -2104,7 +2104,8 @@ var setEvents = function(){
     // For recipes, detail is plain text; for nodes, it's pre-built HTML
     var detailHtml = isRecipe ? escapeHtml(detail) : detail;
 
-    var card = $('<div class="template-selection-card">' +
+    var card = $('<div class="template-selection-card"' +
+      (!isRecipe ? ' data-address="' + escapeHtml(selection.address) + '"' : '') + '>' +
       '<div class="card-header">' +
         '<span class="card-type"><i class="fa ' + icon + '"></i> ' + label + '</span>' +
         '<a href="#" class="card-change"><i class="fa fa-times"></i></a>' +
@@ -2151,6 +2152,15 @@ var setEvents = function(){
     var input = $(this).closest('.template-selection-card').siblings().find('.unified-template-search');
     clearTemplateSelection(input, true);
     input.focus();
+  });
+
+  // Handle body click on node selection card - open source node in new tab
+  $('body').on('click', '.template-selection-card .card-body', function(e) {
+    var address = $(this).closest('.template-selection-card').data('address');
+    if (address) {
+      e.preventDefault();
+      window.open(address, '_blank');
+    }
   });
   // Unified template search for add node modal
   var RECIPES_LIST_TTL_MS = 60 * 1000;
