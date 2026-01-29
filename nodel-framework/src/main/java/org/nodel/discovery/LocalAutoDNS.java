@@ -33,10 +33,19 @@ public class LocalAutoDNS extends AutoDNS {
         _logger.info("LocalAutoDNS enabled (test/local discovery).");
     }
 
+    /**
+     * Resolves any node to the local TCP address.
+     * Unlike the multicast implementation, this always returns localhost
+     * since LocalAutoDNS only tracks nodes within the same process.
+     *
+     * @param node the node name (ignored - all nodes resolve to localhost)
+     * @return NodeAddress pointing to 127.0.0.1 with the current TCP port, or null if TCP is not configured
+     */
     @Override
     public NodeAddress resolveNodeAddress(SimpleName node) {
         int tcpPort = Nodel.getTCPPort();
         if (tcpPort <= 0) {
+            _logger.warn("Cannot resolve node address for '{}': TCP port is not configured (port={})", node, tcpPort);
             return null;
         }
         return NodeAddress.create("127.0.0.1", tcpPort);
@@ -46,8 +55,13 @@ public class LocalAutoDNS extends AutoDNS {
     public void registerService(SimpleName node) {
         List<String> addresses = buildHttpAddresses();
         long now = System.nanoTime() / 1000000L;
-        AdvertisementInfo info = _advertisements.computeIfAbsent(node, key -> new AdvertisementInfo(node, addresses, now));
-        info.refresh(node, addresses, now);
+        _advertisements.compute(node, (key, existing) -> {
+            if (existing == null) {
+                return new AdvertisementInfo(node, addresses, now);
+            }
+            existing.refresh(node, addresses, now);
+            return existing;
+        });
     }
 
     @Override
@@ -63,7 +77,7 @@ public class LocalAutoDNS extends AutoDNS {
     @Override
     public void unregisterService(SimpleName node) {
         if (_advertisements.remove(node) == null) {
-            throw new IllegalStateException(node + " is not advertised anyway.");
+            _logger.warn("Attempted to unregister '{}' but it was not advertised", node);
         }
     }
 
@@ -78,11 +92,18 @@ public class LocalAutoDNS extends AutoDNS {
             return Arrays.asList(httpAddresses);
         }
         String fallback = String.format("http://127.0.0.1:%s%s", Nodel.getHTTPPort(), Nodel.getHTTPSuffix());
+        _logger.debug("HTTP addresses not configured; using fallback: {}", fallback);
         List<String> addresses = new ArrayList<>(1);
         addresses.add(fallback);
         return addresses;
     }
 
+    /**
+     * Creates (or returns the existing) LocalAutoDNS instance as an AutoDNS.
+     * Use this when only the AutoDNS interface is needed.
+     *
+     * @return the singleton LocalAutoDNS instance as an AutoDNS
+     */
     public static AutoDNS create() {
         return Instance.INSTANCE;
     }
@@ -91,6 +112,12 @@ public class LocalAutoDNS extends AutoDNS {
         private static final LocalAutoDNS INSTANCE = new LocalAutoDNS();
     }
 
+    /**
+     * Returns the singleton instance with the concrete LocalAutoDNS type.
+     * Use {@link #create()} when only the AutoDNS interface is needed.
+     *
+     * @return the singleton LocalAutoDNS instance
+     */
     public static LocalAutoDNS instance() {
         return Instance.INSTANCE;
     }
