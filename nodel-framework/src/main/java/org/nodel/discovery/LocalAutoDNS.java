@@ -93,9 +93,7 @@ public class LocalAutoDNS extends AutoDNS {
         }
         String fallback = String.format("http://127.0.0.1:%s%s", Nodel.getHTTPPort(), Nodel.getHTTPSuffix());
         _logger.debug("HTTP addresses not configured; using fallback: {}", fallback);
-        List<String> addresses = new ArrayList<>(1);
-        addresses.add(fallback);
-        return addresses;
+        return Arrays.asList(fallback);
     }
 
     /**
