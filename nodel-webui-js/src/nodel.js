@@ -2122,7 +2122,7 @@ var setEvents = function(){
     if (!isRecipe) {
       card.after($('<label class="copy-config-option">' +
         '<input type="checkbox" class="include-node-config"> ' +
-        'Copy configuration <span class="text-muted">(parameters &amp; bindings)</span>' +
+        'Copy configuration&nbsp;<span class="text-muted">(parameters &amp; bindings)</span>' +
       '</label>'));
     }
   }

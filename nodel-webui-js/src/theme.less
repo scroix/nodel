@@ -837,14 +837,17 @@ div.nodel-charts {
 }
 
 .copy-config-option {
-  display: block;
+  display: flex;
+  align-items: center;
   font-weight: normal;
   margin-top: @padding-base-vertical;
+  margin-left: 2px;
   font-size: @font-size-small;
   cursor: pointer;
+  user-select: none;
 
   input[type="checkbox"] {
-    margin-right: 4px;
+    margin: 0 6px 0 0;
   }
 }
 .nodel-toolkit {
