@@ -767,16 +767,65 @@ div.nodel-charts {
     }
   }
 }
-.template-selected {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: @brand-success;
-  font-size: @font-size-base;
-  pointer-events: none;
-  background: @input-bg;
-  padding-left: 4px;
+.template-selection-card {
+  background: @panel-bg;
+  border: 1px solid @panel-default-border;
+  border-radius: @panel-border-radius;
+  margin-top: @padding-xs-vertical;
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: (@padding-base-vertical * 0.75) @padding-base-horizontal;
+    border-bottom: 1px solid @panel-default-border;
+    font-size: @font-size-small;
+  }
+
+  .card-type {
+    color: @text-muted;
+  }
+
+  .card-change {
+    color: @text-muted;
+    opacity: 0.6;
+    &:hover {
+      color: @brand-danger;
+      opacity: 1;
+    }
+  }
+
+  .card-body {
+    padding: @padding-base-vertical @padding-base-horizontal;
+  }
+
+  .card-name {
+    font-weight: bold;
+    word-break: break-word;
+  }
+
+  .card-detail {
+    font-size: @font-size-small;
+    margin-top: 2px;
+
+    .card-host {
+      display: block;
+      margin-top: 4px;
+      font-family: @font-family-monospace;
+    }
+  }
+}
+
+.copy-config-option {
+  display: block;
+  font-weight: normal;
+  margin-top: @padding-base-vertical;
+  font-size: @font-size-small;
+  cursor: pointer;
+
+  input[type="checkbox"] {
+    margin-right: 4px;
+  }
 }
 .nodel-toolkit {
   margin-bottom: @form-group-margin-bottom;
