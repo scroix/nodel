@@ -132,6 +132,11 @@ dependencies {
  *   ./gradlew build -x test                    # Skip all tests
  *   ./gradlew build -x integrationTest -x e2eTest  # Skip only Playwright tests
  *
+ * DISCOVERY MODE (tests):
+ *   By default, tests use LocalAutoDNS for deterministic discovery results.
+ *   To exercise real multicast discovery, set:
+ *     NODEL_TEST_DISCOVERY=1 ./gradlew :nodel-jyhost:integrationTest --tests org.nodel.DiscoverySmokeTests
+ *
  * =============================================================================
  */
 def nodelProcess = null
