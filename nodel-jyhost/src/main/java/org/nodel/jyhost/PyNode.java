@@ -74,6 +74,7 @@ import org.python.core.PyFunction;
 import org.python.core.PyObject;
 import org.python.core.PyString;
 import org.python.core.PySystemState;
+import org.python.core.PyUnicode;
 import org.python.util.PythonInterpreter;
 
 /**
@@ -549,8 +550,8 @@ public class PyNode extends BaseDynamicNode {
         pySystemState.setCurrentWorkingDir(_root.getAbsolutePath());
         
         // append the Node's root directory to the path
-        pySystemState.path.append(new PyString(_root.getAbsolutePath()));
-        pySystemState.path.append(new PyString(_metaRoot.getAbsolutePath()));
+        pySystemState.path.append(new PyUnicode(_root.getAbsolutePath()));
+        pySystemState.path.append(new PyUnicode(_metaRoot.getAbsolutePath()));
         Py.setSystemState(pySystemState);
         
         _globals = new PyDictionary();
@@ -562,7 +563,6 @@ public class PyNode extends BaseDynamicNode {
             
             trackFunction("(instance creation)");
 
-            // _python = new PythonInterpreter(globals, pySystemState);
             _python = PythonInterpreter.threadLocalStateInterpreter(_globals);
 
         } finally {
@@ -619,10 +619,10 @@ public class PyNode extends BaseDynamicNode {
                 lock = getAReentrantLock();
                 
                 trackFunction("(toolkit injection)");
-                
+
                 // use this import to provide a toolkit directly into the script
                 _python.exec("from nodetoolkit import *");
-                
+
             } finally {
                 untrackFunction("(toolkit injection)");
                 
@@ -736,28 +736,34 @@ public class PyNode extends BaseDynamicNode {
                     List<String> commentary = new ArrayList<>(3);
 
                     trackFunction("mains");
-                    
+
                     // handle @before_main functions (if present)
-                    PyFunction processBeforeMainFunctions = (PyFunction) _globals.get(Py.java2py("processBeforeMainFunctions"));
-                    long beforeFnCount = processBeforeMainFunctions.__call__().asLong();
-                    
-                    if (beforeFnCount > 0)
+                    if (_globals.get(Py.java2py("processBeforeMainFunctions")) instanceof PyFunction) {
+                        PyFunction processBeforeMainFunctions = (PyFunction) _globals.get(Py.java2py("processBeforeMainFunctions"));
+                        long beforeFnCount = processBeforeMainFunctions.__call__().asLong();
+
+                        if (beforeFnCount > 0)
                         commentary.add("'@before_main' function" + (beforeFnCount == 1 ? "" : "s"));
-                    
-                    // call 'main' if it exists
-                    PyFunction mainFunction = (PyFunction) _python.get("main");
-                    if (mainFunction != null) {
+                    }
+
+                    // handle main function (if present)
+                    if (_python.get("main") instanceof PyFunction) {
+                        PyFunction mainFunction = (PyFunction) _python.get("main");
+                        if (mainFunction != null) {
                         mainFunction.__call__();
 
                         commentary.add("'main'");
+                        }
                     }
-                    
+
                     // handle @after_main functions (if present)
-                    PyFunction processAfterMainFunctions = (PyFunction) _globals.get(Py.java2py("processAfterMainFunctions"));
-                    long afterFnCount = processAfterMainFunctions.__call__().asLong();
-                    if (afterFnCount > 0)
+                    if (_globals.get(Py.java2py("processAfterMainFunctions")) instanceof PyFunction) {
+                        PyFunction processAfterMainFunctions = (PyFunction) _globals.get(Py.java2py("processAfterMainFunctions"));
+                        long afterFnCount = processAfterMainFunctions.__call__().asLong();
+                        if (afterFnCount > 0)
                         commentary.add("'@after_main' function" + (afterFnCount == 1 ? "" : "s"));
-                    
+                    }
+
 
                     // nothing went wrong, kick off toolkit
                     _toolkit.enable();
@@ -840,6 +846,10 @@ public class PyNode extends BaseDynamicNode {
         // toolkit and callback queue are cleaned up by 'cleanupInterpreter'
 
         _pySystemState = Py.getSystemState();
+        _pySystemState.setCurrentWorkingDir(_root.getAbsolutePath());
+        ensureSysPath(_pySystemState, _root.getAbsolutePath());
+        ensureSysPath(_pySystemState, _metaRoot.getAbsolutePath());
+
         _callbackQueue = new CallbackQueue();
         _toolkit = new ManagedToolkit(this)
             .setExceptionHandler(_exceptionHandler)
@@ -883,8 +893,13 @@ public class PyNode extends BaseDynamicNode {
         
         // inject into 'sys'
         _pySystemState.__setattr__("nodetoolkit", Py.java2py(_toolkit));
-        
-        
+    }
+
+    private void ensureSysPath(PySystemState systemState, String path) {
+        PyUnicode pathString = new PyUnicode(path);
+        if (!systemState.path.contains(pathString)) {
+            systemState.path.append(pathString);
+        }
     }
 
     /**
@@ -911,13 +926,16 @@ public class PyNode extends BaseDynamicNode {
                 _python.setOut(_outReader);
                 _python.setErr(_errReader);
 
-                PyFunction processCleanupFunctions = (PyFunction) _globals.get(Py.java2py("processCleanupFunctions"));
-                long cleanupFnCount = processCleanupFunctions.__call__().asLong();
+                PyObject cleanupObject = _globals.get(Py.java2py("processCleanupFunctions"));
+                if (cleanupObject instanceof PyFunction) {
+                    PyFunction processCleanupFunctions = (PyFunction) cleanupObject;
+                    long cleanupFnCount = processCleanupFunctions.__call__().asLong();
 
-                if (cleanupFnCount > 0) {
-                    message = "('@at_cleanup' function" + (cleanupFnCount == 1 ? "" : "s") + " completed.)";
-                    _logger.info(message);
-                    _outReader.inject(message);
+                    if (cleanupFnCount > 0) {
+                        message = "('@at_cleanup' function" + (cleanupFnCount == 1 ? "" : "s") + " completed.)";
+                        _logger.info(message);
+                        _outReader.inject(message);
+                    }
                 }
             } catch (Exception exc) {
                 // upstream exception handling should mean we never get here, but just in case
@@ -971,7 +989,19 @@ public class PyNode extends BaseDynamicNode {
 
         // deals with the parameters
         bindParams(bindings.params);
-    } // (method)    
+    } // (method)
+
+    private PyBaseCode resolveFunctionCode(PyFunction pyFunction) {
+        PyObject codeObject = pyFunction.__findattr__("__code__");
+        if (codeObject == null) {
+            codeObject = pyFunction.__findattr__("func_code");
+        }
+
+        if (codeObject instanceof PyBaseCode)
+            return (PyBaseCode) codeObject;
+
+        throw new IllegalStateException("Unable to resolve Python function code object.");
+    }
 
     /**
      * (assumes locked)
@@ -1067,9 +1097,9 @@ public class PyNode extends BaseDynamicNode {
                 
                 throw new IllegalStateException("Action call failure (internal server error) - '" + functionName + "'");
             }
-            
+
             PyFunction pyFunction = (PyFunction) pyObject;
-            PyBaseCode code = (PyBaseCode) pyFunction.func_code;
+            PyBaseCode code = resolveFunctionCode(pyFunction);
 
             // only support either 0 or 1 args
             PyObject pyResult;
@@ -1337,7 +1367,7 @@ public class PyNode extends BaseDynamicNode {
             }
 
             PyFunction pyFunction = (PyFunction) pyObject;
-            PyBaseCode code = (PyBaseCode) pyFunction.func_code;
+            PyBaseCode code = resolveFunctionCode(pyFunction);
 
             // only support either 0 or 1 args
             if (code.co_argcount == 0)
