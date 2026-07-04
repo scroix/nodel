@@ -27,10 +27,15 @@ import org.nodel.io.UnexpectedIOException;
 
 public class Nodel {
 
-    private final static String VERSION = "2.2.1";
+    /**
+     * Fallback for environments without a generated build manifest (e.g. IDE runs);
+     * builds resolve the real identifier from 'build.json' via Version.shared().
+     */
+    private final static String FALLBACK_VERSION = "3.0.0";
 
     public static String getVersion() {
-        return VERSION;
+        String version = org.nodel.Version.shared().version;
+        return (Strings.isBlank(version) || "unset".equals(version)) ? FALLBACK_VERSION : version;
     }
 
     /**
@@ -439,7 +444,7 @@ public class Nodel {
     private static String formatAgent() {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("nodel/").append(VERSION);
+        sb.append("nodel/").append(getVersion());
 
         String javaRuntime = System.getProperty("java.runtime.version");
         if (!Strings.isBlank(javaRuntime))
