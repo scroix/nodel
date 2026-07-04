@@ -148,19 +148,27 @@ public class Launch {
     }
 
     /**
-     * In some console-less environments (e.g. javaw.exe), stdin may be invalid but should not
-     * prevent start up.
+     * In some console-less environments, stdin may be invalid (e.g. javaw.exe) or immediately
+     * at EOF (e.g. a double-clicked app-image, 'nohup', 'docker run -d'), which should not
+     * prevent start up. The self-contained launcher declares the EOF case by baking
+     * '-Dnodel.consoleless=true' into its java options (see 'jpackageAppImage'); otherwise
+     * EOF initiates an orderly shutdown as always (pipes, test harnesses, Ctrl-D).
      */
     private static void tryReadFromConsole() {
         try {
-            System.in.read();
-        } catch (IOException exc) {
-            // unlikely this will be seen anywhere but dump anyway
-            System.err.println("(Running in console-less mode. To terminate process, kill manually or via /diagnostics)");
+            if (System.in.read() >= 0)
+                return; // genuine console input -> shutdown
 
-            // no signals available so just sleep
-            Threads.sleep(Long.MAX_VALUE);
+            if (!Boolean.getBoolean("nodel.consoleless"))
+                return; // EOF -> shutdown
+        } catch (IOException exc) {
+            // invalid stdin; fall through to console-less mode
         }
+
+        System.err.println("(Running in console-less mode. To terminate process, kill manually or via /diagnostics)");
+
+        // no signals available so just sleep
+        Threads.sleep(Long.MAX_VALUE);
     }
 
     /**

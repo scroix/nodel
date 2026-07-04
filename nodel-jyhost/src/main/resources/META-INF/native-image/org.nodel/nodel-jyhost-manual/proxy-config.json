@@ -1,0 +1,27 @@
+[
+ {
+  "interfaces": [
+   "org.nodel.Handler$H0"
+  ]
+ },
+ {
+  "interfaces": [
+   "org.nodel.Handler$H1"
+  ]
+ },
+ {
+  "interfaces": [
+   "org.nodel.Handler$H2"
+  ]
+ },
+ {
+  "interfaces": [
+   "org.nodel.Handler$H3"
+  ]
+ },
+ {
+  "interfaces": [
+   "org.nodel.toolkit.Console$Interface"
+  ]
+ }
+]

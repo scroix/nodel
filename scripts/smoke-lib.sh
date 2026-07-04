@@ -53,10 +53,18 @@ resolve_graal_jar() { # <repo-root>
 # The host shuts down when stdin reaches EOF, so each host reads from a named
 # FIFO whose write end the calling script holds open (the given fd) for its
 # lifetime. Sets STARTED_PID.
-start_host() { # <home> <jar> <port> <stdin-fd>
+#
+# <jar-or-launcher> is normally a jar (run via $JAVA -jar); anything not ending
+# in .jar is treated as a self-contained launcher (e.g. a jpackage app-image
+# binary) and executed directly — lets the suites gate a packaged artifact.
+start_host() { # <home> <jar-or-launcher> <port> <stdin-fd>
     local home="$1" jar="$2" port="$3" fd="$4"
     mkfifo "$home/.stdin"
-    ( cd "$home" && exec "$JAVA" -jar "$jar" -p "$port" <.stdin >output.log 2>error.log ) &
+    case "$jar" in
+        *.jar) set -- "$JAVA" -jar "$jar" ;;
+        *)     set -- "$jar" ;;
+    esac
+    ( cd "$home" && exec "$@" -p "$port" <.stdin >output.log 2>error.log ) &
     STARTED_PID=$!
     eval "exec $fd>'$home/.stdin'"
 }
@@ -80,6 +88,20 @@ invoke() { # <port> <node> <action> <arg>
 
 console_contains() { # <port> <node> <text>
     curl -sf "http://127.0.0.1:$1/REST/nodes/$2/console?from=0&max=500" | grep -qF "$3"
+}
+
+# poll until a node's console shows a marker (e.g. a boot message)
+wait_console_marker() { # <port> <node> <marker> <label> [tries]
+    local port="$1" node="$2" marker="$3" label="$4" tries="${5:-45}" i
+    for i in $(seq 1 "$tries"); do
+        if console_contains "$port" "$node" "$marker"; then
+            printf 'PASS: %s\n' "$label"
+            return 0
+        fi
+        sleep 1
+    done
+    printf 'FAIL: %s\n' "$label" >&2
+    return 1
 }
 
 # poll: invoke <src> repeatedly until <dst> console shows the marker

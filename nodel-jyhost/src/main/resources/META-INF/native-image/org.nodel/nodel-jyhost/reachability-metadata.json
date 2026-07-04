@@ -1,0 +1,3627 @@
+{
+  "reflection": [
+    {
+      "type": "[B"
+    },
+    {
+      "type": "[C"
+    },
+    {
+      "type": "[D"
+    },
+    {
+      "type": "[F"
+    },
+    {
+      "type": "[I"
+    },
+    {
+      "type": "[J"
+    },
+    {
+      "type": "[Ljava.lang.String;"
+    },
+    {
+      "type": "[Ljavax.management.openmbean.CompositeData;"
+    },
+    {
+      "type": "[S"
+    },
+    {
+      "type": "[Z"
+    },
+    {
+      "type": "apple.security.AppleProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.GarbageCollectorMXBean"
+    },
+    {
+      "type": "com.sun.management.GcInfo"
+    },
+    {
+      "type": "com.sun.management.HotSpotDiagnosticMXBean"
+    },
+    {
+      "type": "com.sun.management.ThreadMXBean"
+    },
+    {
+      "type": "com.sun.management.UnixOperatingSystemMXBean"
+    },
+    {
+      "type": "com.sun.management.VMOption"
+    },
+    {
+      "type": "com.sun.management.internal.GarbageCollectorExtImpl"
+    },
+    {
+      "type": "com.sun.management.internal.HotSpotDiagnostic"
+    },
+    {
+      "type": "com.sun.management.internal.HotSpotThreadImpl"
+    },
+    {
+      "type": "com.sun.management.internal.OperatingSystemImpl"
+    },
+    {
+      "type": "com.sun.management.internal.VirtualThreadSchedulerImpls$VirtualThreadSchedulerImpl"
+    },
+    {
+      "type": "java.lang.Boolean",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "FALSE"
+        },
+        {
+          "name": "TRUE"
+        },
+        {
+          "name": "TYPE"
+        },
+        {
+          "name": "serialVersionUID"
+        },
+        {
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Byte",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Character",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.ClassLoader",
+      "fields": [
+        {
+          "name": "classLoaderValueMap"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Deprecated"
+    },
+    {
+      "type": "java.lang.Double",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Enum",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "java.lang.Float",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Integer",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Iterable",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "java.lang.Long",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Object",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "java.lang.Short",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.StackTraceElement"
+    },
+    {
+      "type": "java.lang.String",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Void",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.management.BufferPoolMXBean"
+    },
+    {
+      "type": "java.lang.management.ClassLoadingMXBean"
+    },
+    {
+      "type": "java.lang.management.CompilationMXBean"
+    },
+    {
+      "type": "java.lang.management.LockInfo"
+    },
+    {
+      "type": "java.lang.management.ManagementFactory",
+      "methods": [
+        {
+          "name": "getRuntimeMXBean",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.management.MemoryMXBean"
+    },
+    {
+      "type": "java.lang.management.MemoryManagerMXBean"
+    },
+    {
+      "type": "java.lang.management.MemoryPoolMXBean"
+    },
+    {
+      "type": "java.lang.management.MemoryUsage"
+    },
+    {
+      "type": "java.lang.management.MonitorInfo"
+    },
+    {
+      "type": "java.lang.management.PlatformLoggingMXBean"
+    },
+    {
+      "type": "java.lang.management.RuntimeMXBean"
+    },
+    {
+      "type": "java.lang.management.ThreadInfo"
+    },
+    {
+      "type": "java.math.BigDecimal"
+    },
+    {
+      "type": "java.math.BigInteger"
+    },
+    {
+      "type": "java.security.cert.PKIXRevocationChecker"
+    },
+    {
+      "type": "java.util.AbstractCollection",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "java.util.AbstractList",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "java.util.AbstractMap",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "java.util.AbstractSequentialList",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "java.util.Date"
+    },
+    {
+      "type": "java.util.HashMap",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.util.LinkedHashMap",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "DEFAULT_INITIAL_CAPACITY"
+        },
+        {
+          "name": "DEFAULT_LOAD_FACTOR"
+        },
+        {
+          "name": "MAXIMUM_CAPACITY"
+        },
+        {
+          "name": "MIN_TREEIFY_CAPACITY"
+        },
+        {
+          "name": "PUT_FIRST"
+        },
+        {
+          "name": "PUT_LAST"
+        },
+        {
+          "name": "PUT_NORM"
+        },
+        {
+          "name": "TREEIFY_THRESHOLD"
+        },
+        {
+          "name": "UNTREEIFY_THRESHOLD"
+        },
+        {
+          "name": "accessOrder"
+        },
+        {
+          "name": "entrySet"
+        },
+        {
+          "name": "head"
+        },
+        {
+          "name": "keySet"
+        },
+        {
+          "name": "loadFactor"
+        },
+        {
+          "name": "modCount"
+        },
+        {
+          "name": "putMode"
+        },
+        {
+          "name": "serialVersionUID"
+        },
+        {
+          "name": "size"
+        },
+        {
+          "name": "table"
+        },
+        {
+          "name": "tail"
+        },
+        {
+          "name": "threshold"
+        },
+        {
+          "name": "values"
+        }
+      ]
+    },
+    {
+      "type": "java.util.LinkedList",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "first"
+        },
+        {
+          "name": "last"
+        },
+        {
+          "name": "modCount"
+        },
+        {
+          "name": "serialVersionUID"
+        },
+        {
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "type": "java.util.logging.LogManager",
+      "methods": [
+        {
+          "name": "getLoggingMXBean",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.util.logging.LoggingMXBean"
+    },
+    {
+      "type": "javax.management.MBeanOperationInfo"
+    },
+    {
+      "type": "javax.management.MBeanServerBuilder",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "javax.management.ObjectName"
+    },
+    {
+      "type": "javax.management.StandardEmitterMBean"
+    },
+    {
+      "type": "javax.management.openmbean.CompositeData"
+    },
+    {
+      "type": "javax.management.openmbean.OpenMBeanOperationInfoSupport"
+    },
+    {
+      "type": "javax.management.openmbean.TabularData"
+    },
+    {
+      "type": "jdk.internal.jrtfs.JrtFileSystemProvider"
+    },
+    {
+      "type": "jdk.internal.misc.Unsafe"
+    },
+    {
+      "type": "jdk.management.VirtualThreadSchedulerMXBean"
+    },
+    {
+      "type": "jdk.management.jfr.ConfigurationInfo"
+    },
+    {
+      "type": "jdk.management.jfr.EventTypeInfo"
+    },
+    {
+      "type": "jdk.management.jfr.FlightRecorderMXBean"
+    },
+    {
+      "type": "jdk.management.jfr.FlightRecorderMXBeanImpl"
+    },
+    {
+      "type": "jdk.management.jfr.RecordingInfo"
+    },
+    {
+      "type": "jdk.management.jfr.SettingDescriptorInfo"
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.COMPOSITE$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.CompositeSignatures$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.DH$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.DSA$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.DSTU4145$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.Dilithium$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.EC$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.ECGOST$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.EXTERNAL$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.EdEC$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.ElGamal$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.Falcon$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.GM$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.GOST$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.IES$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.LMS$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.NTRU$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.RSA$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.SPHINCSPlus$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.asymmetric.X509$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Blake2b$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Blake2s$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Blake3$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.DSTU7564$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.GOST3411$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Haraka$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Keccak$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.MD2$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.MD4$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.MD5$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.RIPEMD128$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.RIPEMD160$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.RIPEMD256$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.RIPEMD320$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.SHA1$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.SHA224$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.SHA256$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.SHA3$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.SHA384$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.SHA512$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.SM3$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Skein$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Tiger$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.digest.Whirlpool$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.drbg.DRBG$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.keystore.BC$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.keystore.BCFKS$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.keystore.PKCS12$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.AES$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.ARC4$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.ARIA$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Blowfish$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.CAST5$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.CAST6$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Camellia$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.ChaCha$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.DES$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.DESede$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.DSTU7624$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.GOST28147$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.GOST3412_2015$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Grain128$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Grainv1$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.HC128$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.HC256$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.IDEA$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Noekeon$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.OpenSSLPBKDF$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.PBEPBKDF1$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.PBEPBKDF2$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.PBEPKCS12$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Poly1305$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.RC2$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.RC5$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.RC6$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Rijndael$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.SCRYPT$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.SEED$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.SM4$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Salsa20$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Serpent$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Shacal2$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.SipHash$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.SipHash128$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Skipjack$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.TEA$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.TLSKDF$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Threefish$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Twofish$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.VMPC$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.VMPCKSA3$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.XSalsa20$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.XTEA$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.bouncycastle.jcajce.provider.symmetric.Zuc$Mappings",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.graalvm.home.impl.DefaultHomeFinder"
+    },
+    {
+      "type": "org.graalvm.polyglot.io.IOHelper",
+      "fields": [
+        {
+          "name": "ACCESS"
+        }
+      ]
+    },
+    {
+      "type": "org.graalvm.polyglot.management.Management",
+      "fields": [
+        {
+          "name": "ACCESS"
+        }
+      ]
+    },
+    {
+      "type": "org.joda.time.DateTime",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "iChronology"
+        },
+        {
+          "name": "iMillis"
+        },
+        {
+          "name": "serialVersionUID"
+        }
+      ]
+    },
+    {
+      "type": "org.joda.time.base.AbstractDateTime",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.joda.time.base.AbstractInstant",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.joda.time.base.BaseDateTime",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.nodel.SimpleName",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "DIACRITICS_TOASCII_WITHCASE"
+        },
+        {
+          "name": "GLOB_CHARS"
+        },
+        {
+          "name": "_original"
+        },
+        {
+          "name": "_reduced"
+        },
+        {
+          "name": "_reducedForMatching"
+        },
+        {
+          "name": "s_diacritic_tolowerascii"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.Version",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "branch"
+        },
+        {
+          "name": "date"
+        },
+        {
+          "name": "id"
+        },
+        {
+          "name": "project"
+        },
+        {
+          "name": "version"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.core.BindingState",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "$VALUES"
+        },
+        {
+          "name": "Empty"
+        },
+        {
+          "name": "MissingActionPoint"
+        },
+        {
+          "name": "MissingEventPoint"
+        },
+        {
+          "name": "ResolutionFailure"
+        },
+        {
+          "name": "Resolved"
+        },
+        {
+          "name": "Wired"
+        },
+        {
+          "name": "hash"
+        },
+        {
+          "name": "name"
+        },
+        {
+          "name": "ordinal"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.core.NodelClientAction",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "UNBOUND"
+        },
+        {
+          "name": "_action"
+        },
+        {
+          "name": "_arg"
+        },
+        {
+          "name": "_argSeqNum"
+        },
+        {
+          "name": "_argTimestamp"
+        },
+        {
+          "name": "_bindingState"
+        },
+        {
+          "name": "_bindingStateSeq"
+        },
+        {
+          "name": "_bindingStateTimestamp"
+        },
+        {
+          "name": "_closed"
+        },
+        {
+          "name": "_isUnbound"
+        },
+        {
+          "name": "_metadata"
+        },
+        {
+          "name": "_monitor"
+        },
+        {
+          "name": "_name"
+        },
+        {
+          "name": "_node"
+        },
+        {
+          "name": "_nodelPoint"
+        },
+        {
+          "name": "bindingStateHandler"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.core.NodelClientEvent",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "PERSIST_PERIOD"
+        },
+        {
+          "name": "UNBOUND"
+        },
+        {
+          "name": "_argInstance"
+        },
+        {
+          "name": "_bindingState"
+        },
+        {
+          "name": "_bindingStateHandlers"
+        },
+        {
+          "name": "_callbackQueue"
+        },
+        {
+          "name": "_closed"
+        },
+        {
+          "name": "_event"
+        },
+        {
+          "name": "_eventPoint"
+        },
+        {
+          "name": "_exceptionHandler"
+        },
+        {
+          "name": "_handler"
+        },
+        {
+          "name": "_isUnbound"
+        },
+        {
+          "name": "_metadata"
+        },
+        {
+          "name": "_name"
+        },
+        {
+          "name": "_node"
+        },
+        {
+          "name": "_persistedArg"
+        },
+        {
+          "name": "_persister"
+        },
+        {
+          "name": "_persisterTimer"
+        },
+        {
+          "name": "_statusSeq"
+        },
+        {
+          "name": "_statusTimestamp"
+        },
+        {
+          "name": "_threadStateHandler"
+        },
+        {
+          "name": "s_timers"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.core.NodelPoint",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "_node"
+        },
+        {
+          "name": "_point"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.core.NodelServerAction",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "_action"
+        },
+        {
+          "name": "_actionPoint"
+        },
+        {
+          "name": "_argSchema"
+        },
+        {
+          "name": "_argValue"
+        },
+        {
+          "name": "_callFilter"
+        },
+        {
+          "name": "_callHandlers"
+        },
+        {
+          "name": "_callbackQueue"
+        },
+        {
+          "name": "_caution"
+        },
+        {
+          "name": "_closed"
+        },
+        {
+          "name": "_desc"
+        },
+        {
+          "name": "_exceptionHandler"
+        },
+        {
+          "name": "_fullSchema"
+        },
+        {
+          "name": "_group"
+        },
+        {
+          "name": "_handler"
+        },
+        {
+          "name": "_handlerWithExtraCallHandlers"
+        },
+        {
+          "name": "_node"
+        },
+        {
+          "name": "_order"
+        },
+        {
+          "name": "_seqNum"
+        },
+        {
+          "name": "_threadStateHandler"
+        },
+        {
+          "name": "_timestamp"
+        },
+        {
+          "name": "_title"
+        }
+      ],
+      "methods": [
+        {
+          "name": "call",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        },
+        {
+          "name": "getAction",
+          "parameterTypes": []
+        },
+        {
+          "name": "getArg",
+          "parameterTypes": []
+        },
+        {
+          "name": "getCaution",
+          "parameterTypes": []
+        },
+        {
+          "name": "getDesc",
+          "parameterTypes": []
+        },
+        {
+          "name": "getGroup",
+          "parameterTypes": []
+        },
+        {
+          "name": "getOrder",
+          "parameterTypes": []
+        },
+        {
+          "name": "getSchema",
+          "parameterTypes": []
+        },
+        {
+          "name": "getSeqNum",
+          "parameterTypes": []
+        },
+        {
+          "name": "getTitle",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.core.NodelServerEvent",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "PERSIST_PERIOD"
+        },
+        {
+          "name": "_argInstance"
+        },
+        {
+          "name": "_argSchema"
+        },
+        {
+          "name": "_callbackQueue"
+        },
+        {
+          "name": "_caution"
+        },
+        {
+          "name": "_closed"
+        },
+        {
+          "name": "_desc"
+        },
+        {
+          "name": "_emitFilter"
+        },
+        {
+          "name": "_emitHandlers"
+        },
+        {
+          "name": "_event"
+        },
+        {
+          "name": "_eventPoint"
+        },
+        {
+          "name": "_exceptionHandler"
+        },
+        {
+          "name": "_fullSchema"
+        },
+        {
+          "name": "_group"
+        },
+        {
+          "name": "_monitor"
+        },
+        {
+          "name": "_node"
+        },
+        {
+          "name": "_order"
+        },
+        {
+          "name": "_persistedArg"
+        },
+        {
+          "name": "_persister"
+        },
+        {
+          "name": "_persisterTimer"
+        },
+        {
+          "name": "_threadStateHandler"
+        },
+        {
+          "name": "_title"
+        },
+        {
+          "name": "handler"
+        },
+        {
+          "name": "s_timers"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getArg",
+          "parameterTypes": []
+        },
+        {
+          "name": "getArgSchema",
+          "parameterTypes": []
+        },
+        {
+          "name": "getCaution",
+          "parameterTypes": []
+        },
+        {
+          "name": "getDesc",
+          "parameterTypes": []
+        },
+        {
+          "name": "getEvent",
+          "parameterTypes": []
+        },
+        {
+          "name": "getGroup",
+          "parameterTypes": []
+        },
+        {
+          "name": "getOrder",
+          "parameterTypes": []
+        },
+        {
+          "name": "getSeqNum",
+          "parameterTypes": []
+        },
+        {
+          "name": "getTimestamp",
+          "parameterTypes": []
+        },
+        {
+          "name": "getTitle",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.diagnostics.Diagnostics",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "HISTORY_SIZE"
+        },
+        {
+          "name": "PERIOD"
+        },
+        {
+          "name": "START_INSTANT"
+        },
+        {
+          "name": "_counterNames"
+        },
+        {
+          "name": "_lastTime"
+        },
+        {
+          "name": "_logger"
+        },
+        {
+          "name": "_measurements"
+        },
+        {
+          "name": "_startTime"
+        },
+        {
+          "name": "_thread"
+        }
+      ],
+      "methods": [
+        {
+          "name": "agent",
+          "parameterTypes": []
+        },
+        {
+          "name": "availableProcessors",
+          "parameterTypes": []
+        },
+        {
+          "name": "freeMemory",
+          "parameterTypes": []
+        },
+        {
+          "name": "hostPath",
+          "parameterTypes": []
+        },
+        {
+          "name": "hostingRule",
+          "parameterTypes": []
+        },
+        {
+          "name": "hostname",
+          "parameterTypes": []
+        },
+        {
+          "name": "httpAddresses",
+          "parameterTypes": []
+        },
+        {
+          "name": "maxMemory",
+          "parameterTypes": []
+        },
+        {
+          "name": "nodesRoot",
+          "parameterTypes": []
+        },
+        {
+          "name": "properties",
+          "parameterTypes": []
+        },
+        {
+          "name": "startTime",
+          "parameterTypes": []
+        },
+        {
+          "name": "totalMemory",
+          "parameterTypes": []
+        },
+        {
+          "name": "uptime",
+          "parameterTypes": []
+        },
+        {
+          "name": "vmArgs",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.diagnostics.MeasurementHistory",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "RATE_SCALE"
+        },
+        {
+          "name": "capacity"
+        },
+        {
+          "name": "isRate"
+        },
+        {
+          "name": "lastMeasurement"
+        },
+        {
+          "name": "measurementProvider"
+        },
+        {
+          "name": "name"
+        },
+        {
+          "name": "values"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.discovery.AutoDNS",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "IMPL_DEFAULT_METHOD"
+        },
+        {
+          "name": "IMPL_SYSTEMPROP"
+        },
+        {
+          "name": "_port"
+        },
+        {
+          "name": "s_logger"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.BaseDynamicNode",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.nodel.host.BaseNode",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "_bindings"
+        },
+        {
+          "name": "_closed"
+        },
+        {
+          "name": "_config"
+        },
+        {
+          "name": "_configFile"
+        },
+        {
+          "name": "_console"
+        },
+        {
+          "name": "_consoleSeqCounter"
+        },
+        {
+          "name": "_desc"
+        },
+        {
+          "name": "_dummyBinding"
+        },
+        {
+          "name": "_errReader"
+        },
+        {
+          "name": "_instance"
+        },
+        {
+          "name": "_local"
+        },
+        {
+          "name": "_localActions"
+        },
+        {
+          "name": "_localEvents"
+        },
+        {
+          "name": "_logStreamerHandlers"
+        },
+        {
+          "name": "_logger"
+        },
+        {
+          "name": "_logs"
+        },
+        {
+          "name": "_logsSeqCounter"
+        },
+        {
+          "name": "_metaRoot"
+        },
+        {
+          "name": "_name"
+        },
+        {
+          "name": "_outReader"
+        },
+        {
+          "name": "_parameters"
+        },
+        {
+          "name": "_remoteActions"
+        },
+        {
+          "name": "_remoteEvents"
+        },
+        {
+          "name": "_root"
+        },
+        {
+          "name": "_signal"
+        },
+        {
+          "name": "_started"
+        },
+        {
+          "name": "nodelVersion"
+        },
+        {
+          "name": "s_instance"
+        },
+        {
+          "name": "s_repo"
+        },
+        {
+          "name": "s_threadPool"
+        },
+        {
+          "name": "s_timerThread"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getConsoleLogs",
+          "parameterTypes": [
+            "long",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "getDesc",
+          "parameterTypes": []
+        },
+        {
+          "name": "getLocalActions",
+          "parameterTypes": []
+        },
+        {
+          "name": "getLocalEvents",
+          "parameterTypes": []
+        },
+        {
+          "name": "getStarted",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.BaseNode$Local",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "this$0"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.Binding",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "Blank"
+        },
+        {
+          "name": "EmptyArray"
+        },
+        {
+          "name": "LocalActionExample1"
+        },
+        {
+          "name": "LocalActionExample2"
+        },
+        {
+          "name": "LocalEventExample"
+        },
+        {
+          "name": "RemoteActionExample"
+        },
+        {
+          "name": "RemoteActionExampleName"
+        },
+        {
+          "name": "RemoteEventExample"
+        },
+        {
+          "name": "RemoteEventExampleName"
+        },
+        {
+          "name": "caution"
+        },
+        {
+          "name": "desc"
+        },
+        {
+          "name": "group"
+        },
+        {
+          "name": "order"
+        },
+        {
+          "name": "schema"
+        },
+        {
+          "name": "title"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.BootstrapConfig",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "DEFAULT_CACHE_DIRECTORY"
+        },
+        {
+          "name": "DEFAULT_CONTENT_DIRECTORY"
+        },
+        {
+          "name": "DEFAULT_ENABLE_PROGRAM_LOGGING"
+        },
+        {
+          "name": "DEFAULT_LOG_DIRECTORY"
+        },
+        {
+          "name": "DEFAULT_MESSAGING_PORT"
+        },
+        {
+          "name": "DEFAULT_NODELHOST_PORT"
+        },
+        {
+          "name": "DEFAULT_NODELROOT_DIRECTORY"
+        },
+        {
+          "name": "DEFAULT_RECIPESROOT_DIRECTORY"
+        },
+        {
+          "name": "Example"
+        },
+        {
+          "name": "cacheDirectory"
+        },
+        {
+          "name": "contentDirectory"
+        },
+        {
+          "name": "disableAdvertisements"
+        },
+        {
+          "name": "enableProgramLogging"
+        },
+        {
+          "name": "exclFilters"
+        },
+        {
+          "name": "inclFilters"
+        },
+        {
+          "name": "logsDirectory"
+        },
+        {
+          "name": "messagingPort"
+        },
+        {
+          "name": "networkInterfaces"
+        },
+        {
+          "name": "nodelHostPort"
+        },
+        {
+          "name": "nodelRoot"
+        },
+        {
+          "name": "recipesRoot"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.ConsoleLogEntry",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "comment"
+        },
+        {
+          "name": "console"
+        },
+        {
+          "name": "seq"
+        },
+        {
+          "name": "timestamp"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.ConsoleLogEntry$Console",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "$VALUES"
+        },
+        {
+          "name": "err"
+        },
+        {
+          "name": "hash"
+        },
+        {
+          "name": "info"
+        },
+        {
+          "name": "name"
+        },
+        {
+          "name": "ordinal"
+        },
+        {
+          "name": "out"
+        },
+        {
+          "name": "warn"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.LogEntry",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "alias"
+        },
+        {
+          "name": "arg"
+        },
+        {
+          "name": "seq"
+        },
+        {
+          "name": "source"
+        },
+        {
+          "name": "timestamp"
+        },
+        {
+          "name": "type"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.LogEntry$Source",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "$VALUES"
+        },
+        {
+          "name": "hash"
+        },
+        {
+          "name": "local"
+        },
+        {
+          "name": "name"
+        },
+        {
+          "name": "ordinal"
+        },
+        {
+          "name": "remote"
+        },
+        {
+          "name": "unbound"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.LogEntry$Type",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "$VALUES"
+        },
+        {
+          "name": "action"
+        },
+        {
+          "name": "actionBinding"
+        },
+        {
+          "name": "event"
+        },
+        {
+          "name": "eventBinding"
+        },
+        {
+          "name": "hash"
+        },
+        {
+          "name": "name"
+        },
+        {
+          "name": "ordinal"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.NodeConfig",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "Empty"
+        },
+        {
+          "name": "Example"
+        },
+        {
+          "name": "dependencies"
+        },
+        {
+          "name": "paramValues"
+        },
+        {
+          "name": "remoteBindingValues"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.ParamValues",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.RemoteBindingValues",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "Empty"
+        },
+        {
+          "name": "Example"
+        },
+        {
+          "name": "actions"
+        },
+        {
+          "name": "events"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.RemoteBindingValues$ActionValue",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "Example"
+        },
+        {
+          "name": "action"
+        },
+        {
+          "name": "node"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.host.RemoteBindingValues$EventValue",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "Example"
+        },
+        {
+          "name": "event"
+        },
+        {
+          "name": "node"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.NodelHostHTTPD$ExceptionMessage",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "cause"
+        },
+        {
+          "name": "code"
+        },
+        {
+          "name": "error"
+        },
+        {
+          "name": "message"
+        },
+        {
+          "name": "stackTrace"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.NodelHostHTTPD$Info",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "script"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.NodelHostHTTPD$RESTModel",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "__started"
+        },
+        {
+          "name": "nodes"
+        },
+        {
+          "name": "this$0"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getNodes",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.NodelHostHTTPD$RESTModel$1",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "keySet"
+        },
+        {
+          "name": "values"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.PyNode",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "MONITOR_PERIOD"
+        },
+        {
+          "name": "_bindings"
+        },
+        {
+          "name": "_callbackQueue"
+        },
+        {
+          "name": "_closed"
+        },
+        {
+          "name": "_config"
+        },
+        {
+          "name": "_configFile"
+        },
+        {
+          "name": "_console"
+        },
+        {
+          "name": "_consoleSeqCounter"
+        },
+        {
+          "name": "_desc"
+        },
+        {
+          "name": "_dummyBinding"
+        },
+        {
+          "name": "_errReader"
+        },
+        {
+          "name": "_exceptionHandler"
+        },
+        {
+          "name": "_fileModifiedHash"
+        },
+        {
+          "name": "_files"
+        },
+        {
+          "name": "_funcSeqNumber"
+        },
+        {
+          "name": "_initialised"
+        },
+        {
+          "name": "_instance"
+        },
+        {
+          "name": "_language"
+        },
+        {
+          "name": "_local"
+        },
+        {
+          "name": "_localActions"
+        },
+        {
+          "name": "_localEvents"
+        },
+        {
+          "name": "_logStreamerHandlers"
+        },
+        {
+          "name": "_logger"
+        },
+        {
+          "name": "_logs"
+        },
+        {
+          "name": "_logsSeqCounter"
+        },
+        {
+          "name": "_metaRoot"
+        },
+        {
+          "name": "_name"
+        },
+        {
+          "name": "_nodelHost"
+        },
+        {
+          "name": "_outReader"
+        },
+        {
+          "name": "_parameters"
+        },
+        {
+          "name": "_params"
+        },
+        {
+          "name": "_pythonContext"
+        },
+        {
+          "name": "_pythonEventHandlers"
+        },
+        {
+          "name": "_pythonFunctions"
+        },
+        {
+          "name": "_reloadLock"
+        },
+        {
+          "name": "_remote"
+        },
+        {
+          "name": "_remoteActions"
+        },
+        {
+          "name": "_remoteEvents"
+        },
+        {
+          "name": "_root"
+        },
+        {
+          "name": "_script"
+        },
+        {
+          "name": "_scriptFile"
+        },
+        {
+          "name": "_signal"
+        },
+        {
+          "name": "_started"
+        },
+        {
+          "name": "_threadStateHandler"
+        },
+        {
+          "name": "_toolkit"
+        },
+        {
+          "name": "s_instance"
+        },
+        {
+          "name": "s_repo"
+        },
+        {
+          "name": "s_threadPool"
+        },
+        {
+          "name": "s_timerThread"
+        },
+        {
+          "name": "s_toolkitSourceCache"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getParams",
+          "parameterTypes": []
+        },
+        {
+          "name": "getRemote",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.PyNode$Params",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "this$0"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getSchema",
+          "parameterTypes": []
+        },
+        {
+          "name": "save",
+          "parameterTypes": [
+            "org.nodel.host.ParamValues"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.PyNode$Remote",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "this$0"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getValue",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.jyhost.RecipesEndPoint",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "_recipesRoot"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.logging.Level",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "$VALUES"
+        },
+        {
+          "name": "DEBUG"
+        },
+        {
+          "name": "ERROR"
+        },
+        {
+          "name": "INFO"
+        },
+        {
+          "name": "TRACE"
+        },
+        {
+          "name": "WARN"
+        },
+        {
+          "name": "hash"
+        },
+        {
+          "name": "intLevel"
+        },
+        {
+          "name": "name"
+        },
+        {
+          "name": "ordinal"
+        }
+      ]
+    },
+    {
+      "type": "org.nodel.logging.LogEntry",
+      "allDeclaredFields": true,
+      "fields": [
+        {
+          "name": "error"
+        },
+        {
+          "name": "level"
+        },
+        {
+          "name": "message"
+        },
+        {
+          "name": "s_sequenceCounter"
+        },
+        {
+          "name": "seq"
+        },
+        {
+          "name": "tag"
+        },
+        {
+          "name": "thread"
+        },
+        {
+          "name": "timestamp"
+        }
+      ]
+    },
+    {
+      "type": "sun.management.ClassLoadingImpl"
+    },
+    {
+      "type": "sun.management.CompilationImpl"
+    },
+    {
+      "type": "sun.management.ManagementFactoryHelper$1"
+    },
+    {
+      "type": "sun.management.ManagementFactoryHelper$PlatformLoggingImpl"
+    },
+    {
+      "type": "sun.management.MemoryImpl"
+    },
+    {
+      "type": "sun.management.MemoryManagerImpl"
+    },
+    {
+      "type": "sun.management.MemoryPoolImpl"
+    },
+    {
+      "type": "sun.management.RuntimeImpl",
+      "methods": [
+        {
+          "name": "getInputArguments",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.NativePRNG$NonBlocking",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.security.SecureRandomParameters"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/graalvm/com.oracle.truffle.enterprise/version"
+    },
+    {
+      "glob": "META-INF/graalvm/org.graalvm.polyglot/version"
+    },
+    {
+      "glob": "META-INF/graalvm/org.graalvm.truffle/version"
+    },
+    {
+      "glob": "META-INF/nanohttpd/default-mimetypes.properties"
+    },
+    {
+      "glob": "META-INF/nanohttpd/mimetypes.properties"
+    },
+    {
+      "glob": "META-INF/resources/darwin/aarch64/native.sha256"
+    },
+    {
+      "glob": "META-INF/resources/engine/libtruffleattach/darwin/aarch64/sha256"
+    },
+    {
+      "glob": "META-INF/resources/include.sha256"
+    },
+    {
+      "glob": "META-INF/resources/libgraalpy.sha256"
+    },
+    {
+      "glob": "META-INF/resources/libpython.sha256"
+    },
+    {
+      "glob": "META-INF/resources/ni.sha256"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.graal.python.builtins.PythonBuiltins"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.TruffleRuntimeAccess"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.impl.TruffleLocator"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.instrumentation.provider.TruffleInstrumentProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.library.provider.DefaultExportProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.object.LayoutFactory"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.provider.InternalResourceProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.provider.TruffleLanguageProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.api.strings.provider.JCodingsProvider"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.js.runtime.Evaluator"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.runtime.EngineCacheSupport"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.runtime.FloodControlHandler"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.runtime.LoopNodeFactory"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.runtime.TruffleTypes"
+    },
+    {
+      "glob": "META-INF/services/com.oracle.truffle.runtime.jfr.EventFactory$Provider"
+    },
+    {
+      "glob": "META-INF/services/java.lang.System$LoggerFinder"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.InetAddressResolverProvider"
+    },
+    {
+      "glob": "META-INF/services/java.nio.file.spi.FileSystemProvider"
+    },
+    {
+      "glob": "META-INF/services/java.time.zone.ZoneRulesProvider"
+    },
+    {
+      "glob": "META-INF/services/org.graalvm.home.HomeFinder"
+    },
+    {
+      "glob": "META-INF/services/org.graalvm.polyglot.impl.AbstractPolyglotImpl"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/PythonBuiltins.class"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenABC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenCODECS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenCOLLECTIONS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenCOLLECTIONS_ABC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenCONTEXTLIB.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenCOPYREG.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenDATETIME.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ALIASES.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ASCII.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_BASE64_CODEC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_BIG5.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_BIG5HKSCS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_BZ2_CODEC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CHARMAP.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP037.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1006.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1026.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1125.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1140.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1250.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1251.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1252.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1253.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1254.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1255.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1256.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1257.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP1258.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP273.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP424.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP437.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP500.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP720.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP737.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP775.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP850.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP852.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP855.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP856.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP857.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP858.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP860.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP861.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP862.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP863.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP864.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP865.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP866.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP869.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP874.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP875.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP932.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP949.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_CP950.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_EUC_JISX0213.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_EUC_JIS_2004.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_EUC_JP.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_EUC_KR.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_GB18030.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_GB2312.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_GBK.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_HEX_CODEC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_HP_ROMAN8.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_HZ.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_IDNA.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO2022_JP.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO2022_JP_1.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO2022_JP_2.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO2022_JP_2004.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO2022_JP_3.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO2022_JP_EXT.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO2022_KR.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_1.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_10.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_11.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_13.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_14.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_15.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_16.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_2.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_3.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_4.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_5.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_6.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_7.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_8.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ISO8859_9.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_JOHAB.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_KOI8_R.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_KOI8_T.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_KOI8_U.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_KZ1048.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_LATIN_1.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_ARABIC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_CROATIAN.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_CYRILLIC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_FARSI.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_GREEK.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_ICELAND.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_LATIN2.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_ROMAN.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_ROMANIAN.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MAC_TURKISH.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_MBCS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_OEM.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_PALMOS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_PTCP154.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_PUNYCODE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_QUOPRI_CODEC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_RAW_UNICODE_ESCAPE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ROT_13.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_SHIFT_JIS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_SHIFT_JISX0213.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_SHIFT_JIS_2004.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_TIS_620.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UNDEFINED.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UNICODE_ESCAPE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_16.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_16_BE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_16_LE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_32.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_32_BE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_32_LE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_7.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_8.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UTF_8_SIG.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_UU_CODEC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENCODINGS_ZLIB_CODEC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenENUM.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenFROZEN_ONLY.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenFUNCTOOLS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGENERICPATH.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY_BUILTINS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY_JAVA.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY_PIP_HOOK.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY_UNICODEDATA.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY__POLYGLOT.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY__SRE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY__SYSCONFIG.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY__WEAKREF.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenGRAALPY___GRAALPYTHON__.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenHEAPQ.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenIMPORTLIB_MACHINERY.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenIMPORTLIB_UTIL.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenIMPORTLIB__BOOTSTRAP.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenIMPORTLIB__BOOTSTRAP_EXTERNAL.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenINSPECT.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenIO.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenKEYWORD.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenLOCALE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenNTPATH.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenOPERATOR.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenOS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenPOLYGLOT_ARROW.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenPOSIXPATH.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenRE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenREPRLIB.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenRE__CASEFIX.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenRE__COMPILER.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenRE__CONSTANTS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenRE__PARSER.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenRLCOMPLETER.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenRUNPY.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenSITE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenSRE_COMPILE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenSRE_CONSTANTS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenSRE_PARSE.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenSTAT.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenTYPES.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenWARNINGS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/FrozenZIPIMPORT.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen_COLLECTIONS_ABC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen_PY_ABC.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen_SITEBUILTINS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen_SYSCONFIGDATA.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen_WEAKREFSET.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen__HELLO__.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen__PHELLO__.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen__PHELLO___HAM.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen__PHELLO___HAM_EGGS.bin"
+    },
+    {
+      "glob": "com/oracle/graal/python/builtins/objects/module/Frozen__PHELLO___SPAM.bin"
+    },
+    {
+      "glob": "graalpy_versions"
+    },
+    {
+      "glob": "org/graalvm/shadowed/com/ibm/icu/ICUConfig.properties"
+    },
+    {
+      "glob": "org/graalvm/shadowed/com/ibm/icu/impl/data/icudata/uprops.icu"
+    },
+    {
+      "glob": "org/joda/time/tz/data/Australia/Hobart"
+    },
+    {
+      "glob": "org/joda/time/tz/data/ZoneInfoMap"
+    },
+    {
+      "glob": "org/nodel/build.json"
+    },
+    {
+      "glob": "org/nodel/host/content.zip"
+    },
+    {
+      "glob": "org/nodel/jyhost/nodetoolkit.js"
+    },
+    {
+      "glob": "org/nodel/jyhost/nodetoolkit.py"
+    },
+    {
+      "glob": "org/slf4j/impl/StaticLoggerBinder.class"
+    },
+    {
+      "glob": "org/slf4j/impl/jdk14_logging.properties"
+    },
+    {
+      "glob": "simplelogger.properties"
+    },
+    {
+      "module": "java.base",
+      "glob": "sun/net/www/content-types.properties"
+    },
+    {
+      "module": "jdk.jfr",
+      "glob": "jdk/jfr/internal/query/view.ini"
+    },
+    {
+      "module": "jdk.jfr",
+      "glob": "jdk/jfr/internal/types/metadata.bin"
+    }
+  ],
+  "bundles": [],
+  "jni": [
+    {
+      "type": "[Lcom.sun.management.internal.DiagnosticCommandArgumentInfo;"
+    },
+    {
+      "type": "[Lcom.sun.management.internal.DiagnosticCommandInfo;"
+    },
+    {
+      "type": "com.sun.management.internal.DiagnosticCommandArgumentInfo",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "boolean",
+            "boolean",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.internal.DiagnosticCommandInfo",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Boolean",
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Class",
+      "methods": [
+        {
+          "name": "getClassLoader",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.ClassLoader",
+      "methods": [
+        {
+          "name": "loadClass",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.Arrays",
+      "methods": [
+        {
+          "name": "asList",
+          "parameterTypes": [
+            "java.lang.Object[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "jdk.internal.loader.ClassLoaders$AppClassLoader"
+    },
+    {
+      "type": "sun.management.VMManagementImpl",
+      "fields": [
+        {
+          "name": "compTimeMonitoringSupport"
+        },
+        {
+          "name": "currentThreadCpuTimeSupport"
+        },
+        {
+          "name": "objectMonitorUsageSupport"
+        },
+        {
+          "name": "otherThreadCpuTimeSupport"
+        },
+        {
+          "name": "remoteDiagnosticCommandsSupport"
+        },
+        {
+          "name": "synchronizerUsageSupport"
+        },
+        {
+          "name": "threadAllocatedMemorySupport"
+        },
+        {
+          "name": "threadContentionMonitoringSupport"
+        }
+      ]
+    }
+  ]
+}

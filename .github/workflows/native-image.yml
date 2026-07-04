@@ -1,0 +1,58 @@
+name: Native Image (experimental)
+
+# Manual-only: builds the experimental GraalVM Native Image binary and smokes
+# it. NOT the shipped distributable (see package.yml) — recipes that interop
+# with unregistered Java classes fail under AOT; full ledger in
+# POLYGLOT_INTEGRATION.md (goal 3).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Linux x64 native binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+
+      # exports GRAALVM_HOME/JAVA_HOME itself
+      - name: Setup GraalVM CE 24
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '24'
+          distribution: 'graalvm-community'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build native image
+        run: ./gradlew -PnativeImage :nodel-jyhost:nativeCompile
+        env:
+          # cap the image builder heap for the 16 GB runner
+          NATIVE_IMAGE_OPTIONS: -J-Xmx13g
+
+      - name: Functional smoke against the native binary
+        run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/native/nativeCompile/nodelhost"
+
+      - name: Archive binary
+        run: |
+          cd nodel-jyhost/build/native/nativeCompile
+          tar czf nodelhost-native-linux-x64.tar.gz nodelhost
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodelhost-native-linux-x64
+          path: nodel-jyhost/build/native/nativeCompile/nodelhost-native-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0   # already a .tar.gz; don't deflate it again

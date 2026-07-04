@@ -32,6 +32,21 @@ configurations.all {
     }
 }
 
+// Native Image build (experimental; see POLYGLOT_INTEGRATION.md §goal-3): the
+// default 'python'/'js' artifacts are the Oracle GraalVM flavours whose bundled
+// native-image config force-enables the (absent-on-CE) Truffle enterprise
+// feature. Building a native image on GraalVM CE needs the '-community'
+// variants, swapped in only for such builds so the shipped jar is unchanged.
+//   ./gradlew -PnativeImage :nodel-jyhost:nativeCompile   (GRAALVM_HOME = GraalVM CE for JDK 24)
+if (project.hasProperty('nativeImage')) {
+    configurations.all {
+        resolutionStrategy.dependencySubstitution {
+            substitute module('org.graalvm.python:python') using module("org.graalvm.python:python-community:${polyglotVersion}")
+            substitute module('org.graalvm.js:js') using module("org.graalvm.js:js-community:${polyglotVersion}")
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }
@@ -166,6 +181,95 @@ tasks.register('unversioned', Copy) {
 }
 
 // ------------------------------------------------------------------
+// Self-contained app-image (jpackage; bundles the toolchain's Java runtime)
+// Additive packaging for machines with no Java installed — the plain
+// 'build' -> runnable-jar flow is untouched. See BUILDING.md / README.
+// ------------------------------------------------------------------
+
+// (isWindows / toolchainLauncher are shared with the test infrastructure below)
+def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+// the toolchain JDK Gradle provisions: jpackage lives beside its 'java', and test
+// hosts must run on it too (a PATH 'java' may be older and unable to run GraalPy)
+def toolchainLauncher = javaToolchains.launcherFor(java.toolchain)
+
+def jpackageImageDir = new File(buildDir, 'jpackage/image')
+
+tasks.register('jpackageAppImage') {
+    dependsOn 'shadowJar'
+    group = 'distribution'
+    description = 'Builds a self-contained app-image (bundled Java runtime) via jpackage'
+    inputs.file(tasks.shadowJar.archiveFile)
+    outputs.dir(jpackageImageDir)
+
+    doLast {
+        def jarFile = tasks.shadowJar.archiveFile.get().asFile
+
+        // jpackage copies EVERYTHING in --input into the image: stage the one jar alone
+        def stagingDir = new File(buildDir, 'jpackage/staging')
+        delete stagingDir
+        stagingDir.mkdirs()
+        copy { from jarFile; into stagingDir }
+
+        delete jpackageImageDir
+        jpackageImageDir.mkdirs()
+
+        def toolchainBinDir = toolchainLauncher.get().executablePath.asFile.parentFile
+        def jpackageExe = new File(toolchainBinDir, isWindows ? 'jpackage.exe' : 'jpackage')
+        def args = [jpackageExe.absolutePath,
+                    '--type', 'app-image',
+                    '--name', 'nodelhost',
+                    '--vendor', 'Nodel',
+                    '--app-version', rootProject.ext.baseVersion,
+                    '--input', stagingDir.absolutePath,
+                    '--main-jar', jarFile.name,
+                    '--dest', jpackageImageDir.absolutePath]
+        // same JPMS openings the shadow jar's manifest carries (jpackage launchers
+        // don't honour the Add-Opens manifest attribute) + native access for GraalPy;
+        // 'nodel.consoleless' tells the host that an instant stdin EOF (double-click,
+        // nohup, docker -d) is not a shutdown request — see Launch.tryReadFromConsole
+        (graalpyAddOpens + ['--enable-native-access=ALL-UNNAMED', '-Dnodel.consoleless=true']).each {
+            args += ['--java-options', it]
+        }
+        exec { commandLine args }
+
+        logger.lifecycle("app-image: " + jpackageImageDir.listFiles().collect { it.name }.join(', '))
+    }
+}
+
+// Archives the app-image preserving exec bits and symlinks (Gradle's Zip/Tar don't),
+// hence the command-line tar/zip. Output: build/distributions/app-image/
+tasks.register('packageAppImage') {
+    dependsOn 'jpackageAppImage'
+    group = 'distribution'
+    description = 'Archives the jpackage app-image for distribution'
+    inputs.dir(jpackageImageDir)
+    outputs.dir(new File(buildDir, 'distributions/app-image'))
+
+    doLast {
+        def outDir = new File(buildDir, 'distributions/app-image')
+        delete outDir
+        outDir.mkdirs()
+
+        def osName = System.getProperty('os.name').toLowerCase()
+        def os = osName.contains('mac') ? 'macos' : (osName.contains('windows') ? 'windows' : 'linux')
+        def archProp = System.getProperty('os.arch')
+        def arch = (archProp == 'amd64' || archProp == 'x86_64') ? 'x64' : archProp
+
+        // same naming scheme as the shadow jar, plus platform
+        def base = tasks.shadowJar.archiveFileName.get() - '.jar' + "-${os}-${arch}"
+        def topDir = os == 'macos' ? 'nodelhost.app' : 'nodelhost'
+        def archive = new File(outDir, base + (os == 'linux' ? '.tar.gz' : '.zip'))
+
+        def archiveCmd = os == 'linux' ? ['tar', 'czf', archive.absolutePath, topDir]
+                : os == 'macos' ? ['zip', '-qry', archive.absolutePath, topDir]
+                : ['powershell', '-Command', "Compress-Archive -Path ${topDir} -DestinationPath '${archive.absolutePath}'"]
+        exec { workingDir jpackageImageDir; commandLine archiveCmd }
+
+        logger.lifecycle("distributable: " + outDir.listFiles().collect { it.name }.join(', '))
+    }
+}
+
+// ------------------------------------------------------------------
 // GraalVM Native Image Configuration
 // (Requires GraalVM for JDK 21 or later when building native images.)
 // ------------------------------------------------------------------
@@ -181,9 +285,13 @@ graalvmNative {
             buildArgs.addAll([
                     // If certain classes should init at build-time or run-time:
 
-                    '--initialize-at-build-time=org.slf4j',
+                    // NOTE: no '--initialize-at-build-time=org.slf4j' — Nodel's slf4j binding
+                    // (SimpleLoggerFactory -> Level -> timers/threads) would be captured in the
+                    // image heap and native-image rejects run-time state there
                     '-H:+ReportExceptionStackTraces'
             ])
+            // (memory-constrained builders can cap the image builder heap via the
+            // NATIVE_IMAGE_OPTIONS env var, e.g. '-J-Xmx13g' — see native-image.yml)
         }
     }
 }
@@ -200,15 +308,11 @@ tasks.named('distZip') {
 // ------------------------------------------------------------------
 // Test infrastructure (integration & e2e) — see BUILDING.md "TESTING"
 // ------------------------------------------------------------------
+// (isWindows / toolchainLauncher are defined in the packaging section above)
 def nodelProcess = null
-def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
 def discoveryEnv = System.getenv('NODEL_TEST_DISCOVERY')
 def useLocalDiscovery = (discoveryEnv == null || discoveryEnv.trim().isEmpty()
         || discoveryEnv.trim().equalsIgnoreCase('false') || discoveryEnv.trim().equals('0'))
-
-// the host under test must run on the same JDK the toolchain compiles for
-// (a PATH 'java' may be older and unable to run GraalPy)
-def testHostLauncher = javaToolchains.launcherFor(java.toolchain)
 
 tasks.register('cleanNodelhostTemp', Delete) {
     delete layout.projectDirectory.dir('nodelhost-temp')
@@ -217,7 +321,7 @@ tasks.register('cleanNodelhostTemp', Delete) {
 tasks.register('startNodelhost') {
     dependsOn 'cleanNodelhostTemp', 'classes', configurations.discoveryFixture
     doLast {
-        def javaExe = testHostLauncher.get().executablePath.asFile.absolutePath
+        def javaExe = toolchainLauncher.get().executablePath.asFile.absolutePath
         def hostClasspath = files(sourceSets.main.runtimeClasspath, configurations.discoveryFixture).asPath
         // Kill any existing process on the test port before starting
         if (isWindows) {
