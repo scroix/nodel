@@ -553,14 +553,6 @@ public class PyNode extends BaseDynamicNode {
             // Capture the classloader
             ClassLoader hostCl = Thread.currentThread().getContextClassLoader();
 
-            System.out.println("DEBUG  Loader used by PyNode: " + hostCl);
-            try {
-                Class<?> c = hostCl.loadClass("org.nodel.jyhost.NodelHost");
-                System.out.println("DEBUG  Can load NodelHost from that loader: YES");
-            } catch (ClassNotFoundException e) {
-                System.out.println("DEBUG  Can load NodelHost from that loader: NO");
-            }
-
             // Use standard Context.newBuilder instead of GraalPyResources.contextBuilder
             _pythonContext = Context.newBuilder("python")
                 .allowHostAccess(HostAccess.ALL)
