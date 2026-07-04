@@ -148,12 +148,26 @@ public class Launch {
     }
 
     /**
-     * In some console-less environments (e.g. javaw.exe), stdin may be invalid but should not
-     * prevent start up.
+     * In some console-less environments (e.g. javaw.exe, 'nohup', 'docker run -d', a
+     * double-clicked app-image), stdin may be invalid or immediately at EOF but should not
+     * prevent start up. A late EOF (e.g. a supervising process closing a pipe after a long
+     * run) still initiates an orderly shutdown.
      */
     private static void tryReadFromConsole() {
+        long started = System.currentTimeMillis();
         try {
-            System.in.read();
+            int read = System.in.read();
+            if (read >= 0)
+                return; // genuine console input
+
+            // EOF: within moments of start-up with no interactive console attached means
+            // stdin was never real (/dev/null); don't treat it as a shutdown request
+            if (System.console() == null && System.currentTimeMillis() - started < 2000) {
+                System.err.println("(Running in console-less mode. To terminate process, kill manually or via /diagnostics)");
+
+                // no signals available so just sleep
+                Threads.sleep(Long.MAX_VALUE);
+            }
         } catch (IOException exc) {
             // unlikely this will be seen anywhere but dump anyway
             System.err.println("(Running in console-less mode. To terminate process, kill manually or via /diagnostics)");
