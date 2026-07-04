@@ -391,6 +391,9 @@ public class PyNode extends BaseDynamicNode {
             _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
             _pythonContext.getBindings(_languageId).putMember("_toolkit", _toolkit);
 
+            // Inject the node itself (2.x parity: recipes use '_node' for name lookups, etc.)
+            _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_node", this);
+
             // Load and execute the toolkit bootstrap script BEFORE any user script
             loadToolkit();
 
@@ -984,16 +987,10 @@ public class PyNode extends BaseDynamicNode {
 
     // --- Action / Event Handling --- Override methods from BaseDynamicNode ---
 
-    public void handleActionRequest(SimpleName actionName, Object arg, ActionRequestHandler origHandler) {
-        // a completion callback is optional (the declarative-binding path has none)
-        final ActionRequestHandler handler = (origHandler != null ? origHandler : new ActionRequestHandler() {
-
-            @Override
-            public void handleActionRequest(Object result) {
-                // (fire-and-forget; failures are already surfaced in the console)
-            }
-
-        });
+    public void handleActionRequest(SimpleName actionName, Object arg, ActionRequestHandler handlerOrNull) {
+        // fire-and-forget callers (e.g. a script's lookup_local_action(...).call()) pass no
+        // completion handler; failures are logged to the node's console regardless
+        final ActionRequestHandler handler = (handlerOrNull != null) ? handlerOrNull : (result) -> { };
 
         if (_closed || _pythonContext == null) {
              handler.handleActionRequest(new RuntimeException("Node is closed or not initialised"));
@@ -1455,7 +1452,7 @@ public class PyNode extends BaseDynamicNode {
         NodelServerAction action = new NodelServerAction(getName(), name, binding);
 
         ActionRequestHandler handler = (requestArg) -> {
-            handleActionRequest(name, requestArg, null); 
+            handleActionRequest(name, requestArg, null); // fire-and-forget; completion not needed
         };
         action.registerAction(handler);
 

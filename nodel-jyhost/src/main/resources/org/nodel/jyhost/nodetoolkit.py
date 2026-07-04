@@ -182,39 +182,55 @@ class Timer:
     A managed timer that can execute functions periodically
     """
     def __init__(self, func: Callable,
-                 interval_seconds: float,
-                 first_delay_seconds: float = 0,
+                 intervalInSeconds: float,
+                 firstDelayInSeconds: float = 0,
                  stopped: bool = False):
         """
         Create a new timer
 
         Args:
             func: Function to call
-            interval_seconds: Time between calls
-            first_delay_seconds: Initial delay before first call
+            intervalInSeconds: Time between calls
+            firstDelayInSeconds: Initial delay before first call
             stopped: Whether to start in stopped state
         """
         self.wrapper = _toolkit.createTimer(
             func,
-            int(first_delay_seconds * 1000),
-            int(interval_seconds * 1000),
+            int(firstDelayInSeconds * 1000),
+            int(intervalInSeconds * 1000),
             stopped
         )
 
-    def set_delay_and_interval(self, delay_seconds: float, interval_seconds: float) -> None:
+    def setDelayAndInterval(self, delayInSeconds: float, intervalInSeconds: float) -> None:
         """Update both delay and interval"""
         self.wrapper.setDelayAndInterval(
-            int(delay_seconds * 1000),
-            int(interval_seconds * 1000)
+            int(delayInSeconds * 1000),
+            int(intervalInSeconds * 1000)
         )
 
-    def set_interval(self, seconds: float) -> None:
+    def setInterval(self, seconds: float) -> None:
         """Set new interval between calls"""
         self.wrapper.setInterval(int(seconds * 1000))
 
-    def set_delay(self, seconds: float) -> None:
+    def setDelay(self, seconds: float) -> None:
         """Set new initial delay"""
         self.wrapper.setDelay(int(seconds * 1000))
+
+    def getDelay(self) -> float:
+        """Current delay in seconds"""
+        return self.wrapper.getDelay() / 1000.0
+
+    def getInterval(self) -> float:
+        """Current interval in seconds"""
+        return self.wrapper.getInterval() / 1000.0
+
+    def isStarted(self) -> bool:
+        """Whether timer is running"""
+        return self.wrapper.isStarted()
+
+    def isStopped(self) -> bool:
+        """Whether timer is stopped"""
+        return self.wrapper.isStopped()
 
     def reset(self) -> None:
         """Reset the timer"""
@@ -228,26 +244,6 @@ class Timer:
         """Stop the timer"""
         self.wrapper.stop()
 
-    @property
-    def delay(self) -> float:
-        """Current delay in seconds"""
-        return self.wrapper.getDelay() / 1000.0
-
-    @property
-    def interval(self) -> float:
-        """Current interval in seconds"""
-        return self.wrapper.getInterval() / 1000.0
-
-    @property
-    def is_started(self) -> bool:
-        """Whether timer is running"""
-        return self.wrapper.isStarted()
-
-    @property
-    def is_stopped(self) -> bool:
-        """Whether timer is stopped"""
-        return self.wrapper.isStopped()
-
 # Action/Event Creation Functions
 def create_local_action(name: str, handler: Callable, metadata: Any = None):
     """Create a local action that other nodes can call"""
@@ -257,70 +253,67 @@ def create_local_event(name: str, metadata: Any = None):
     """Create a local event that can be emitted"""
     return _toolkit.createEvent(name, _process_metadata(metadata))
 
+def Signal(name: str, metadata: Any = None):
+    """Creates a local signal (on-the-fly). RESERVED FOR FUTURE DIFFERENTIATION FROM EVENT"""
+    return create_local_event(name, metadata)
+
+def Event(name: str, metadata: Any = None):
+    """DEPRECATED - use 'create_local_event' or '@local_event' (see Signal)"""
+    return create_local_event(name, metadata)
+
+def Action(name: str, handler: Callable, metadata: Any = None):
+    """DEPRECATED - use 'create_local_action' or '@local_action'"""
+    return create_local_action(name, handler, metadata)
+
 def create_remote_action(name: str, metadata: Any = None,
-                        suggested_node: str = None, suggested_action: str = None):
+                        suggestedNode: str = None, suggestedAction: str = None):
     """Create a remote action that calls another node"""
     return _toolkit.createRemoteAction(name, _process_metadata(metadata),
-                                     suggested_node, suggested_action)
+                                     suggestedNode, suggestedAction)
 
 def create_remote_event(name: str, handler: Callable, metadata: Any = None,
-                       suggested_node: str = None, suggested_event: str = None):
+                       suggestedNode: str = None, suggestedEvent: str = None):
     """Create a remote event that listens to another node"""
     return _toolkit.createRemoteEvent(name, handler, _process_metadata(metadata),
-                                    suggested_node, suggested_event)
+                                    suggestedNode, suggestedEvent)
 
 # Decorator Support
+def _as_unary(handler: Callable) -> Callable:
+    """Adapts a zero-arg handler to the single-arg form the toolkit expects"""
+    if len(inspect.signature(handler).parameters) == 0:
+        return lambda arg: handler()
+    return handler
+
 def local_action(metadata: Any = None):
     """Decorator to create a local action"""
     def decorator(handler: Callable):
-        sig = inspect.signature(handler)
-        if len(sig.parameters) == 0:
-            return _toolkit.createAction(
-                handler.__name__,
-                lambda arg: handler(),
-                _process_metadata(metadata)
-            )
-        return _toolkit.createAction(
-            handler.__name__,
-            handler,
-            _process_metadata(metadata)
-        )
+        return create_local_action(handler.__name__, _as_unary(handler), metadata)
     return decorator
 
-def remote_event(metadata: Any = None, suggested_node: str = None,
-                suggested_event: str = None):
+def remote_event(metadata: Any = None, suggestedNode: str = None,
+                suggestedEvent: str = None):
     """Decorator to create a remote event handler"""
     def decorator(handler: Callable):
-        sig = inspect.signature(handler)
-        if len(sig.parameters) == 0:
-            return _toolkit.createRemoteEvent(
-                handler.__name__,
-                lambda arg: handler(),
-                _process_metadata(metadata),
-                suggested_node,
-                suggested_event
-            )
-        return _toolkit.createRemoteEvent(
-            handler.__name__,
-            handler,
-            _process_metadata(metadata),
-            suggested_node,
-            suggested_event
-        )
+        return create_remote_event(handler.__name__, _as_unary(handler), metadata,
+                                   suggestedNode, suggestedEvent)
     return decorator
 
 # Network Functions
-def TCP(*args, dest=None, connected=None, received=None, sent=None,
-        disconnected=None, timeout=None, send_delimiters='\n',
-        receive_delimiters='\r\n', binary_start_stop_flags=None):
-    """Create a managed TCP connection"""
-    # Handle both positional and keyword arguments
-    if args:
-        dest = args[0] if len(args) > 0 else dest
-
+def TCP(dest=None, connected=None, received=None, sent=None,
+        disconnected=None, timeout=None, sendDelimiters='\n',
+        receiveDelimiters='\r\n', binaryStartStopFlags=None):
+    """Create a managed TCP connection that attempts to stay open"""
     return _toolkit.createTCP(dest, connected, received, sent, disconnected,
-                            timeout, send_delimiters, receive_delimiters,
-                            binary_start_stop_flags)
+                            timeout, sendDelimiters, receiveDelimiters,
+                            binaryStartStopFlags)
+
+def SSH(dest=None, connected=None, received=None, sent=None,
+        disconnected=None, timeout=None, sendDelimiters='\n',
+        receiveDelimiters='\r\n', username=None, password=None, echoDisabled=False):
+    """Create a managed SSH connection ('shell' mode) for executing commands"""
+    return _toolkit.createSSH(dest, connected, received, sent, disconnected,
+                            timeout, sendDelimiters, receiveDelimiters,
+                            username, password, echoDisabled)
 
 def UDP(source: str = '0.0.0.0:0',
         dest: Optional[str] = None,
@@ -330,6 +323,54 @@ def UDP(source: str = '0.0.0.0:0',
         intf: Optional[str] = None):
     """Create a managed UDP connection"""
     return _toolkit.createUDP(source, dest, ready, received, sent, intf)
+
+# Process Functions
+def Process(command,            # the command line and arguments (list)
+            # callbacks
+            started=None,       # every time the process is started
+            stdout=None,        # stdout handler
+            stdin=None,         # feedback when .send is called (for convenience)
+            stderr=None,        # stderr handler
+            stopped=None,       # when the process stops / is stopped
+            timeout=None,       # timeout when a request is issued but no response
+            # arguments
+            sendDelimiters='\n', receiveDelimiters='\r\n', # default delimiters
+            working=None,       # working directory
+            mergeErr=False,     # merge stderr into the stdout for convenience
+            env=None):          # add/set environment variables (dict)
+    """Create a managed OS process that attempts to stay executing"""
+    return _toolkit.createProcess(command,
+                                started, stdout, stdin, stderr, stopped, timeout,
+                                sendDelimiters, receiveDelimiters,
+                                working, mergeErr, env)
+
+def quick_process(command,
+                  stdinPush=None,     # text to push to stdin
+                  started=None,       # a callback where arg is OS process ID
+                  finished=None,      # single callback argument with these properties:
+                                      #   'code': the exit code (or None if timed out)
+                                      #   'stdout': the complete stdout capture
+                                      #   'stderr': the complete stderr capture (if not merged)
+                  timeoutInSeconds=0, # if positive, kills the process on timeout
+                  working=None,       # the working directory
+                  mergeErr=False,     # merge stderr into the stdout for convenience
+                  env=None):          # add/set environment variables (dict)
+    """Create a short-living process (still managed)"""
+    return _toolkit.createQuickProcess(command, stdinPush,
+                                     started, finished,
+                                     int(timeoutInSeconds * 1000), working, mergeErr, env)
+
+def request_queue(received=None, sent=None, timeout=None):
+    """Create a safe request queue for mixing asynchronous and synchronous programming, e.g.
+
+    queue = request_queue()
+
+    def udp_received(source, data):
+        queue.handle((source, data))
+
+    queue.request(lambda: udp.send('?'), lambda arg: console.info('RECV UDP %s' % arg))
+    """
+    return _toolkit.createRequestQueue(received, sent, timeout)
 
 # Utility Functions
 def json_encode(obj: Any) -> str:
@@ -342,7 +383,7 @@ def json_decode(json_str: str) -> Any:
 
 def same_value(obj1: Any, obj2: Any) -> bool:
     """Deep comparison of two values"""
-    return _toolkit.areSameValue(obj1, obj2)
+    return _toolkit.sameValue(obj1, obj2)
 
 def is_empty(obj: Any) -> bool:
     """Check if object is empty"""
@@ -359,6 +400,80 @@ def call_safe(func: Callable, delay: float = 0,
               error: Optional[Callable] = None) -> None:
     """Schedule a thread-safe function call"""
     _toolkit.call(True, func, int(delay * 1000), complete, error)
+
+def call_delayed(delay: float, func: Callable,
+                 complete: Optional[Callable] = None,
+                 error: Optional[Callable] = None) -> None:
+    """DEPRECATED (use 'call' and optional args)"""
+    call(func, delay, complete, error)
+
+def next_seq() -> int:
+    """Returns an atomically incrementing long integer"""
+    return _toolkit.nextSequenceNumber()
+
+def system_clock() -> int:
+    """Returns a high-precision atomically incrementing clock in milliseconds"""
+    return _toolkit.systemClockInMillis()
+
+# Note: for DateTime functions:
+#
+#   now = date_now()
+#   now2 = date_at(now.getYear(), now.getMonthOfYear(), now.getDayOfMonth(), now.getHourOfDay(), now.getMinuteOfHour(), now.getSecondOfMinute(), now.getMillisOfSecond())
+#
+#   now == now2 (is True)
+#
+# (for instant.toString(pattern), see http://www.joda.org/joda-time/apidocs/org/joda/time/format/DateTimeFormat.html)
+
+def date_now():
+    """'now' timestamp (based on excellent JODATIME library)"""
+    return _toolkit.dateNow()
+
+def date_at(year, month, day, hour, minute, second=0, millisecond=0):
+    """a timestamp at another time (based on excellent JODATIME library)"""
+    return _toolkit.dateAt(year, month, day, hour, minute, second, millisecond)
+
+def date_instant(millis):
+    """a timestamp based on a millisecond offset (JODATIME library)"""
+    return _toolkit.dateAtInstant(int(millis))
+
+def date_parse(s):
+    """parses a date string e.g. '2016-06-13T08:17:11.836-04:00'"""
+    return _toolkit.parseDate(s)
+
+# Simple URL retriever (supports POST) where 'query' and 'headers' are dictionaries.
+# If 'fullResponse', result is an object which includes 'statusCode', 'reason', 'content'
+# and attributes made up of the response HTTP headers
+def get_url(url, method=None, query=None, username=None, password=None, headers=None,
+            contentType=None, post=None, connectTimeout=10, readTimeout=15, fullResponse=False):
+    if fullResponse:
+        return _toolkit.getHttpClient().makeRequest(url, method, query, username, password, headers,
+                                                    contentType, post, int(connectTimeout*1000), int(readTimeout*1000))
+    else:
+        return _toolkit.getHttpClient().makeSimpleRequest(url, method, query, username, password, headers,
+                                                          contentType, post, int(connectTimeout*1000), int(readTimeout*1000))
+
+def getURL(url, method=None, query=None, username=None, password=None, headers=None,
+           contentType=None, post=None, connectTimeout=10, readTimeout=15):
+    """DEPRECATED (same as get_url)"""
+    return get_url(url, method, query, username, password, headers,
+                   contentType, post, connectTimeout, readTimeout)
+
+# Node creation (on-the-fly)
+def Node(nodeName):
+    """Create a node (on-the-fly)"""
+    return _toolkit.createNode(nodeName)
+
+def Subnode(baseName):
+    """Creates a node based on the name of an existing node (on-the-fly)"""
+    return _toolkit.createSubnode(baseName)
+
+def release_node(node):
+    """Releases a node created with Node() or Subnode() and related resources"""
+    return _toolkit.releaseNode(node)
+
+def releaseNode(node):
+    """DEPRECATED (see release_node)"""
+    return _toolkit.releaseNode(node)
 
 # Node Management
 _nodel_before_main_functions: List[Callable] = []
@@ -406,27 +521,36 @@ def process_cleanup_functions() -> int:
 # --- Lookup Functions ---
 def lookup_local_action(name):
     """Find a local action by name."""
-    if not _toolkit:
-        raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.getLocalAction(name)
+    return _toolkit.lookupLocalAction(name)
 
 def lookup_local_event(name):
     """Find a local event by name."""
-    if not _toolkit:
-        raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.getLocalEvent(name)
+    return _toolkit.lookupLocalEvent(name)
 
 def lookup_remote_action(name):
     """Find a remote action by name."""
-    if not _toolkit:
-        raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.getRemoteAction(name)
+    return _toolkit.lookupRemoteAction(name)
 
 def lookup_remote_event(name):
     """Find a remote event by name."""
-    if not _toolkit:
-        raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.getRemoteEvent(name)
+    return _toolkit.lookupRemoteEvent(name)
+
+def lookup_parameter(name):
+    """Looks up a parameter by simple name."""
+    return _toolkit.lookupParameter(name)
+
+# --- Convenience constants / string helpers ---
+
+# a convenient immutable empty constant that can be used against most objects
+# (arrays, dicts, sets, strings, etc.)
+# (created Python-side: sharing PyToolkit.EmptyDict across GraalVM contexts is unsafe)
+EMPTY = types.MappingProxyType({})
+
+def is_blank(s) -> bool:
+    """Returns true if a string is blank (None, empty or all white-space incl. tab, CR, LN)"""
+    # implemented natively; 2.x imported org.nodel.Strings.isBlank but 'from <class> import
+    # <static method>' is not supported by the Java import hook
+    return s is None or len(str(s).strip()) == 0
 
 # Make commonly used items available at module level
 __all__ = [
@@ -441,14 +565,36 @@ __all__ = [
     'create_remote_event',
     'local_action',
     'remote_event',
+    'Signal',
+    'Event',
+    'Action',
     'TCP',
     'UDP',
+    'SSH',
+    'Process',
+    'quick_process',
+    'request_queue',
     'call',
     'call_safe',
+    'call_delayed',
+    'next_seq',
+    'system_clock',
+    'date_now',
+    'date_at',
+    'date_instant',
+    'date_parse',
+    'get_url',
+    'getURL',
+    'Node',
+    'Subnode',
+    'release_node',
+    'releaseNode',
     'json_encode',
     'json_decode',
     'same_value',
     'is_empty',
+    'is_blank',
+    'EMPTY',
     'before_main',
     'after_main',
     'at_cleanup',
@@ -456,4 +602,5 @@ __all__ = [
     'lookup_local_event',
     'lookup_remote_action',
     'lookup_remote_event',
+    'lookup_parameter',
 ]

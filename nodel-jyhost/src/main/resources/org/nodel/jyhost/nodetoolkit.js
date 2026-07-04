@@ -192,16 +192,16 @@ function jsonEncode(obj) { return _toolkit.toJson(obj); }
 function jsonDecode(json) { return _toolkit.fromJson(json); }
 
 /** Deep comparison of two values. */
-function sameValue(obj1, obj2) { return _toolkit.areSameValue(obj1, obj2); }
+function sameValue(obj1, obj2) { return _toolkit.sameValue(obj1, obj2); }
 
 /** True if the value is null/undefined, an empty string or an empty array. */
 function isEmpty(obj) { return obj === null || obj === undefined || obj.length === 0; }
 
 // --- lookups --------------------------------------------------------------------
-function lookupLocalAction(name) { return _toolkit.getLocalAction(name); }
-function lookupLocalEvent(name) { return _toolkit.getLocalEvent(name); }
-function lookupRemoteAction(name) { return _toolkit.getRemoteAction(name); }
-function lookupRemoteEvent(name) { return _toolkit.getRemoteEvent(name); }
+function lookupLocalAction(name) { return _toolkit.lookupLocalAction(name); }
+function lookupLocalEvent(name) { return _toolkit.lookupLocalEvent(name); }
+function lookupRemoteAction(name) { return _toolkit.lookupRemoteAction(name); }
+function lookupRemoteEvent(name) { return _toolkit.lookupRemoteEvent(name); }
 function lookupParameter(name) { return _toolkit.lookupParameter(name); }
 
 // --- lifecycle hooks -------------------------------------------------------------
