@@ -226,11 +226,6 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
     private boolean _enabled;
 
     /**
-     * An atomically incrementing long integer.
-     */
-    private AtomicLong _sequenceCounter = new AtomicLong(0);
-
-    /**
      * (constructor)
      */
     public ManagedToolkit(BaseDynamicNode node) {
@@ -537,7 +532,45 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
 
         return process;
     }
-    
+
+    /**
+     * Constructs a short-living (but still managed) OS process.
+     */
+    @HostAccess.Export
+    public QuickProcess createQuickProcess(List<String> command,
+            String stdinPush,
+            H1<Integer> onStarted,
+            H1<FinishedArg> onFinished,
+            long timeout,
+            String working,
+            boolean mergeErr,
+            Map<String, String> env) {
+
+        final QuickProcess quickProcess = new QuickProcess(_threadStateHandler, s_threadPool, s_timers, _processExceptionHandler, _node, command, stdinPush, onStarted, onFinished, timeout, working, mergeErr, env);
+        quickProcess.setClosedHandler(new Handler.H0() {
+
+            @Override
+            public void handle() {
+                synchronized (_lock) {
+                    _quickProcesses.remove(quickProcess);
+                }
+            }
+
+        });
+
+        // all wired, can begin...
+        quickProcess.go();
+
+        synchronized (_lock) {
+            if (_closed)
+                Stream.safeClose(quickProcess);
+            else
+                _quickProcesses.add(quickProcess);
+        }
+
+        return quickProcess;
+    }
+
     /**
      * Constructs a managed TCP connection.
      */
@@ -1094,11 +1127,13 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
     }
     
     /**
-     * Returns an atomically incrementing long integer.
+     * Returns an atomically incrementing long integer (host-wide, shared with
+     * the framework's own sequence so recipe-supplied 'order' values interleave
+     * with host-assigned ones).
      */
     @HostAccess.Export
     public long nextSequenceNumber() {
-        return _sequenceCounter.getAndIncrement();
+        return Nodel.getNextSeq();
     }
     
     /**
@@ -1113,9 +1148,9 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
      * Compares two objects using Nodel's value comparison logic.
      */
     @HostAccess.Export
-    public boolean areSameValue(Object obj1, Object obj2) {
+    public boolean sameValue(Object obj1, Object obj2) {
         ensureNotClosed();
-        return org.nodel.reflection.Objects.sameValue(obj1, obj2); // Fixed: using Objects.sameValue
+        return org.nodel.reflection.Objects.sameValue(obj1, obj2);
     }
 
     /**
