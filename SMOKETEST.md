@@ -34,16 +34,16 @@ When running these smoke tests with an AI agent (Claude Code, etc.):
 | Step | Command / Action | Notes |
 |------|------------------|-------|
 | 1 | `cd` to the repo root | All commands assume it. |
-| 2 | `java -version` | Needs JDK 11+ (e.g. `openjdk version "11.0.31"`). |
+| 2 | `java -version` | **Running** the host needs JDK 21+. Building only needs JDK 11+ on the PATH to bootstrap Gradle — the build auto-provisions a Java 21 toolchain (see BUILDING.md). |
 | 3 | Ports | The manual smoke host uses **8089**; the gradle test suite owns **18085** (and kills anything on it — don't park your own host there). |
 | 4 | `export BASE=http://127.0.0.1:8089` | Used by every curl below. |
 
 ### Pre-flight Verification
 
 ```bash
-# 1. JDK present and 11+
+# 1. JDK present and 21+ (needed to run the built host; Gradle self-provisions its own toolchain)
 java -version
-# Expected: 'openjdk version "11...' or later
+# Expected: 'openjdk version "21...' or later
 
 # 2. Smoke port free (kill leftovers from a previous run)
 lsof -ti :8089 | xargs kill 2>/dev/null; rm -rf /tmp/nodel-smoke-host
@@ -76,9 +76,9 @@ force the suite to execute.
 
 **Expected observables** (from a run that actually executes the tasks):
 
-- `BUILD SUCCESSFUL` in ~3–5m (a first-ever run also downloads Playwright browsers; `28
-  actionable tasks: 28 executed` when forced)
-- On the order of 125 `PASSED` lines, `0` FAILED (grep -c exits 1 on zero matches — that's the pass case)
+- `BUILD SUCCESSFUL` in ~3–5m (a first-ever run also downloads Playwright browsers; `31
+  actionable tasks: 30 executed, 1 up-to-date` when forced — `npmSetup` stays up-to-date)
+- On the order of 138 `PASSED` lines, `0` FAILED (grep -c exits 1 on zero matches — that's the pass case)
 - The only skipped *test* is `DiscoverySmokeTests > testNodeUrlsContainsLocalNode()` (opt-in
   multicast, see §7). A bare grep for `SKIPPED` also matches gradle *task* lines like
   `Task :nodel-webui-js:npmSetup SKIPPED` — ignore those.
@@ -86,9 +86,9 @@ force the suite to execute.
 
 ```bash
 ls nodel-jyhost/build/distributions/standalone/
-# Expected: nodelhost-<branch>-2.2.1-rev<N>.jar  (~20 MB)
+# Expected: nodelhost-<branch>-3.0.0-rev<N>.jar  (fat jar bundling GraalPy — ~140 MB, not the ~20 MB of the 2.x line)
 ls nodel-framework/build/libs/
-# Expected: nodel-framework-2.2.1.jar  AND  nodel-framework-2.2.1-test-fixtures.jar
+# Expected: nodel-framework-3.0.0.jar  AND  nodel-framework-3.0.0-test-fixtures.jar
 ```
 
 The test-fixtures jar carries `LocalAutoDNS` (deterministic, non-multicast discovery) and is
@@ -106,6 +106,25 @@ Run the built jar from a scratch directory (**never the repo root** — the host
 `recipes/`, lock and bootstrap files into its working directory) with LocalAutoDNS on the
 classpath so discovery is deterministic.
 
+**Two v3 launch requirements** (both handled by the commands below):
+
+1. **Java 21+.** If the PATH `java` is older, use the toolchain Gradle provisioned during §1:
+
+   ```bash
+   JAVA=java   # keep if `java -version` says 21+
+   java -version 2>&1 | grep -qE '"(2[1-9]|[3-9][0-9])' || JAVA=$(find ~/.gradle/jdks -type f -path "*/bin/java" 2>/dev/null | head -1)
+   "$JAVA" -version
+   # Expected: openjdk version "21..." or later
+   ```
+
+2. **GraalPy `--add-opens` flags.** The standalone jar's manifest carries an `Add-Opens`
+   attribute, but that only applies to `java -jar`; launching with `-cp` (needed to add the
+   test-fixtures jar) requires them explicitly:
+
+   ```bash
+   ADD_OPENS="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+   ```
+
 **Option A — Claude Preview MCP** (preferred for agents; the same server then backs §6's browser
 checks). Create `.claude/launch.json` (untracked — delete it in §8):
 
@@ -118,7 +137,7 @@ checks). Create `.claude/launch.json` (untracked — delete it in §8):
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "REPO=\"$PWD\"; mkdir -p /tmp/nodel-smoke-host/nodes; cd /tmp/nodel-smoke-host; tail -f /dev/null | java -cp \"$(ls \"$REPO\"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar | head -1):$(ls \"$REPO\"/nodel-framework/build/libs/*test-fixtures*.jar | head -1)\" '-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance' org.nodel.jyhost.Launch -p 8089"
+        "REPO=\"$PWD\"; JAVA=java; java -version 2>&1 | grep -qE '\"(2[1-9]|[3-9][0-9])' || JAVA=$(find ~/.gradle/jdks -type f -path '*/bin/java' 2>/dev/null | head -1); mkdir -p /tmp/nodel-smoke-host/nodes; cd /tmp/nodel-smoke-host; tail -f /dev/null | \"$JAVA\" -cp \"$(ls \"$REPO\"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar | head -1):$(ls \"$REPO\"/nodel-framework/build/libs/*test-fixtures*.jar | head -1)\" --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED '-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance' org.nodel.jyhost.Launch -p 8089"
       ],
       "port": 8089
     }
@@ -135,7 +154,7 @@ port 8089" and a `serverId` for later `preview_*` calls.
 JAR=$(ls "$PWD"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar | head -1)
 FIX=$(ls "$PWD"/nodel-framework/build/libs/*test-fixtures*.jar | head -1)
 mkdir -p /tmp/nodel-smoke-host/nodes
-(cd /tmp/nodel-smoke-host && tail -f /dev/null | java -cp "$JAR:$FIX" \
+(cd /tmp/nodel-smoke-host && tail -f /dev/null | "$JAVA" -cp "$JAR:$FIX" $ADD_OPENS \
   '-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance' \
   org.nodel.jyhost.Launch -p 8089 > host.log 2>&1 &)
 ```
@@ -152,10 +171,10 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" $BASE/
 # Expected: HTTP 200
 
 ls /tmp/nodel-smoke-host
-# Expected: _bootstrap_example.json  _bootstrap_schema.json  _instance.lock  custom  nodes  recipes
+# Expected: _API_schema.json  _bootstrap_example.json  _bootstrap_schema.json  _instance.lock  custom  nodes  recipes
 
 # Startup banner (host.log for Option B; preview server logs for Option A):
-#   Nodel [Jython] v2.2.1-<branch>_r<N> is running.
+#   Nodel [GraalPython] v3.0.0-<branch>_r<N> is running.
 #   (web interface available at http://<ip>:8089)
 
 # LocalAutoDNS audit line — deliberately logged at WARN so it is visible at default level.
@@ -183,20 +202,24 @@ curl -s $BASE/REST | head -c 200
 
 # Node map (name -> {name, desc, started, nodelVersion})
 curl -s $BASE/REST/nodes | python3 -m json.tool | head
-# Expected: JSON object keyed by node name; each value has "nodelVersion":"2.2.1"
+# Expected: JSON object keyed by node name; each value has "desc":"GraalVM Python Node" and a
+# "nodelVersion" field. NOTE: nodelVersion currently reports "2.2.1" on a 3.0.0 host — stale
+# constant in org.nodel.core.Nodel, see Known Issues.
 
 # Diagnostics — JVM/host state
 curl -s $BASE/REST/diagnostics | python3 -c "import sys,json;print(sorted(json.load(sys.stdin).keys()))"
-# Expected keys include: agent, availableProcessors, freeMemory, hostname, httpAddresses,
-#                        nodesRoot, startTime, systemProperties, uptime, vmArgs
+# Expected keys include: agent, availableProcessors, freeMemory, hostPath, hostingRule,
+#                        hostname, httpAddresses, maxMemory, nodesRoot, startTime,
+#                        systemProperties, totalMemory, uptime
 
 # Framework logs (newest-first; seq/timestamp/level/message rows)
 curl -s "$BASE/REST/logs?from=0&max=3" | head -c 300
-# Expected: JSON array; the earliest entry is the LocalAutoDNS warning from §2
+# Expected: JSON array; the earliest entries are the LocalAutoDNS warning from §2 and — once
+# the sync node's timer has fired — the known SyncNow null-handler ERROR (see Known Issues)
 
 # Python toolkit reference served to script authors
 curl -s $BASE/REST/toolkit | head -c 120
-# Expected: {"script":"from sys import nodetoolkit\n...
+# Expected: {"script":"\"\"\"\nNodel Toolkit for GraalVM Python\n...
 
 # Discovery service state (plain string, not JSON)
 curl -s -w " (status %{http_code})\n" $BASE/REST/discovery
@@ -282,8 +305,10 @@ curl -s -w " (status %{http_code})\n" -X POST "$BASE/REST/nodes/Smoke%20Producer
 # Expected: true (status 200)
 sleep 5
 curl -s "$BASE/REST/nodes/Smoke%20Producer/console?from=0&max=5" | head -c 300
-# Expected: newest entries show the reload cycle: "(clean up complete)" then
-#           "(Python and script.py loaded in ...)" then "Smoke producer started"
+# Expected: newest entries show the reload cycle (oldest→newest): "Python node destroyed." →
+#           "Initialising Python node..." → "Nodel toolkit loaded - enhanced console bridge
+#           established" → "Executed toolkit bootstrap script" → "Smoke producer started" →
+#           "Python node initialised."
 # Console history (and seq numbering) persists across the restart.
 ```
 
@@ -384,7 +409,7 @@ the same URL.
 | 6.2 | Node page renders | Navigate to `/nodes/SmokeProducer/` | URL settles at `.../nodel.xml#Activity`; `document.title` = `Smoke Producer`; navbar brand shows the node name; Console panel shows the same entries as the REST console (e.g. `Smoke producer started`). |
 | 6.3 | Action form renders lazily | Expand the "Ping" group panel (`$(document.getElementById('0_actsig_group')).collapse('show')` — the group's form content only renders on expand) | Panel gains class `collapse in`; an `input.form-control` and a `Send Ping` submit button appear inside `.nodel-schema-action[data-name="sendPing"]`. |
 | 6.4 | Invoke action from UI | Fill the input with a fresh marker (e.g. `ui-$RANDOM`), then JS-click the `Send Ping` button | Within ~2s the on-page Console shows `Ping sent: <marker>`. Cross-check over REST: producer console has `Ping sent: <marker>` **and** (binding from §5 still live) consumer console has `Received ping: <marker>`. |
-| 6.5 | Add node via UI | On `/`, click `.nodel-add .addgrp .dropdown-toggle`, fill `.nodel-add input.nodenamval` with `UI Smoke Node`, click `.nodel-add .nodeaddsubmit` | Browser navigates to the new node's page; its console shows the example recipe starting (`Recipe has started!` plus an `IP address has not been specified` warning). REST: `UI Smoke Node` appears in `$BASE/REST/nodes` within a few seconds. |
+| 6.5 | Add node via UI | On `/`, click `.nodel-add .addgrp .dropdown-toggle`, fill `.nodel-add input.nodenamval` with `UI Smoke Node`, click `.nodel-add .nodeaddsubmit` | Browser navigates to the new node's page; its console shows the v3 default stub starting (`Hello from Python` between the `Initialising Python node...` / `Python node initialised.` markers — v3 no longer provisions the 2.x example recipe, see Known Issues). REST: `UI Smoke Node` appears in `$BASE/REST/nodes` within a few seconds. |
 | 6.6 | Cleanup UI node | `curl -s -X POST "$BASE/REST/nodes/UI%20Smoke%20Node/remove?confirm=true" -H "Content-Type: application/json" -d '{}'` | `true`; node disappears from `$BASE/REST/nodes`. |
 
 ---
@@ -419,7 +444,12 @@ lsof -ti :8089 | xargs kill 2>/dev/null
 
 rm -rf /tmp/nodel-smoke-host
 rm -f .claude/launch.json && rmdir .claude 2>/dev/null   # if §2 Option A created it
-rm -rf build   # stray root-level gradle problems-report dir left by --tests runs
+
+# Stray root-level gradle dirs (problems-report etc.) left by --tests runs.
+# ⚠️ Do NOT `rm -rf build` on the v3 line: build/compat-smoke/** is TRACKED content
+# (the wire-compatibility baseline from scripts/compat-smoke.sh). Remove only untracked strays:
+git status --short build | grep '^??' | awk '{print $2}' | xargs rm -rf 2>/dev/null
+git status --short build   # must come back empty (no deletions!)
 
 git status --short
 # Expected: nothing beyond changes you intended (a clean playbook run leaves the tree untouched;
@@ -433,8 +463,24 @@ git status --short
 Genuine product bugs found while executing this playbook get recorded here (do not patch around
 them).
 
-- *(no product bugs found — authored 2026-07-04 against rev550 of this working tree; 125/125
-  committed tests passing)*
+- *(2.x baseline: no product bugs found — authored 2026-07-04 against v2.2.1 rev550; the v3
+  replay below was run 2026-07-04 against v3.0.0 rev624, 138/138 committed tests passing)*
+- **Stale version constant (v3):** a 3.0.0 host reports `"nodelVersion":"2.2.1"` on
+  `/REST/nodes` — `org.nodel.core.Nodel`'s `VERSION` constant was never bumped when the v3
+  line was established (the startup banner gets the real 3.0.0 identifier from the build).
+- **Function-style local actions log a null-handler error (v3):** the built-in recipes-sync
+  node (`first_node.py`, `def local_action_SyncNow(...)`) logs
+  `Error executing action 'SyncNow': ... "this.val$handler" is null` every time its timer
+  fires `lookup_local_action("SyncNow").call()`. The sync work itself completes (clone/pull
+  logs appear); the error is noise but it is the first entry in `/REST/logs` on a fresh
+  host. Decorator-style actions (`@local_action`, as in the fixtures) are unaffected.
+- **Local events lost `group`/`schema` over REST (v3):** `/REST/nodes/<n>/events` entries
+  carry only `{arg, seq, timestamp, name, title, order}` — the `group` and `schema` from
+  `LocalEvent({...})` are dropped (actions keep theirs). BindingsExtractor still parses
+  them, so they're lost between extraction and live-event registration in PyNode.
+- **Example recipe no longer provisioned (v3):** a blank node gets a one-line
+  `Hello from Python` stub written by `PyNode.init()`; `ExampleScript.java` /
+  `example_script.py` (the 2.x "Recipe has started!" example) are now dead code.
 - **Minor test-infra leak:** on Unix the gradle `startNodelhost` task keeps the host's stdin
   open via a `bash -c "tail -f /dev/null | java ..."` wrapper, and `stopNodelhost` doesn't
   reap all of it. Observed 2026-07-04: a completed `./gradlew build` orphans the
@@ -452,11 +498,12 @@ them).
 
 | Issue | Solution |
 |-------|----------|
-| `WARNING: An illegal reflective access operation has occurred` (Jython/guava) on host startup | Benign on JDK 11 — startup proceeds. |
+| Host fails at startup with `InaccessibleObjectException` / `module java.base does not "opens ..."` | Launched with `-cp` but without the GraalPy `--add-opens` flags (the jar manifest's `Add-Opens` only applies to `java -jar`). Use the §2 commands verbatim. |
+| `UnsupportedClassVersionError` (class file version 65.0) at startup | PATH `java` is older than 21. Resolve `$JAVA` per §2 (Gradle-provisioned toolchain under `~/.gradle/jdks`). |
 | Host exits immediately when backgrounded | Stdin closed. Keep it open: `tail -f /dev/null \| java ...` (see §2). |
 | Node doesn't appear after copying into `nodes/` | The directory scan runs every few seconds; poll the node's `/console` endpoint for up to ~30s (observed 7–11s) before concluding failure. |
 | 404 `EndpointNotFoundException` right after a rename | The node reloads and re-registers under the new name; poll `$BASE/REST/nodes` until it lists the new name, then continue. |
-| `remote/save` seems to "lose" console history | Saving remote bindings restarts the node's script (console shows `(clean up complete)` → reload); history is retained above the reload marker. |
+| `remote/save` seems to "lose" console history | Saving remote bindings restarts the node's script (console shows the `Python node destroyed.` → `Initialising Python node...` reload cycle); history is retained above the reload marker. |
 | Gradle tests fail with port conflicts | The suite owns 18085 and kills whatever holds it. Keep the manual smoke host on 8089. |
 | Browser clicks "succeed" but nothing happens | See §6 traps: resize the viewport (0×0 default) and use JS `element.click()` instead of coordinate clicks. |
 | Clicking a node link on the list page doesn't navigate | nodel.js runs periodic redirect/reload polls that can interrupt an in-flight navigation (see `TestBase.recreatePage` rationale). Navigate directly to `/nodes/<ReducedName>/` — reduced name strips spaces/hyphens/underscores/dots. |
@@ -476,11 +523,12 @@ Minimum viable smoke coverage achieved when:
 - [ ] `sendPing` action call returns `true`; console, `/events/Ping` last-value, and `/activity` all show the marker
 - [ ] Node restart, recipe-based `newNode`, rename, and `remove?confirm=true` all succeed (with re-registration polling)
 - [ ] Binding saved via `/remote/save`, `Wired` handshake in activity, and a ping marker propagates producer → consumer console/activity
-- [ ] ⚠️ **Browser-driven**: node list renders; node page shows live console; action invoked from the UI reaches both nodes; add-node UI creates a running example node
+- [ ] ⚠️ **Browser-driven**: node list renders; node page shows live console; action invoked from the UI reaches both nodes; add-node UI creates a running node (v3 default stub)
 - [ ] Multicast section run **or** its blocker proven (logs checked, cause recorded)
 - [ ] Cleanup leaves no host process, no `/tmp/nodel-smoke-host`, and a clean `git status`
 
 ---
 
-*Authored 2026-07-04 against this working tree (v2.2.1 rev550); every command above was executed
-and its output verified during authoring.*
+*Authored 2026-07-04 against the 2.x line (v2.2.1 rev550); ported to and fully re-executed
+against the v3 line (Nodel 3.0.0 on GraalVM, rev624) on 2026-07-04 — every command above was
+run and its output verified on v3 during the port.*
