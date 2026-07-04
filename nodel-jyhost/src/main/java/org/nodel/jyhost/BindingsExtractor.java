@@ -194,13 +194,12 @@ public class BindingsExtractor {
         Exception exc = null;
 
         try {
-            // If the value has members, treat it like a dict
-            if (definition.hasMembers()) {
-                // Convert to a Java Map to pass into Serialisation
-                Map<String, Object> dictMap = toJavaMap(definition);
+            // A Python dict exposes its entries as *hash entries*, not members
+            // (members are the dict's own attributes/methods), so check this first
+            if (definition.hasHashEntries()) {
                 binding = (Binding) Serialisation.coerce(
                         Binding.class,
-                        dictMap,
+                        toJavaMap(definition),
                         String.class,
                         Object.class
                 );
@@ -222,7 +221,8 @@ public class BindingsExtractor {
                             }
                         }
                     }
-                    // If it's executable (a function), we can check __doc__:
+                    // If it's executable (a function), we can check __doc__
+                    // (must come before the generic members check: functions have members too)
                     else if (definition.canExecute()) {
                         binding = new Binding();
                         // Attempt to read docstring:
@@ -243,6 +243,15 @@ public class BindingsExtractor {
                                 binding.title = docStr;
                             }
                         }
+                    }
+                    // Anything else with members (e.g. a host object): treat like a dict
+                    else if (definition.hasMembers()) {
+                        binding = (Binding) Serialisation.coerce(
+                                Binding.class,
+                                toJavaMap(definition),
+                                String.class,
+                                Object.class
+                        );
                     }
                 }
             }
@@ -272,46 +281,47 @@ public class BindingsExtractor {
     }
 
     /**
-     * Converts a GraalVM Python Value (that "hasMembers()") into a Java Map.
-     * Recursively converts nested structures. Adjust as needed for your environment.
+     * Converts a GraalVM Python Value into a Java Map. Python dicts expose their
+     * entries as hash entries; other objects expose members. Nested structures
+     * (e.g. a 'schema' dict with an 'enum' list) are converted recursively.
      */
     private static Map<String, Object> toJavaMap(Value val) {
         Map<String, Object> map = new LinkedHashMap<>();
-        if (!val.hasMembers()) {
-            return map; // or throw?
-        }
-        Set<String> keys = val.getMemberKeys();
-        for (String k : keys) {
-            Value child = val.getMember(k);
-
-            if (child == null || child.isNull()) {
-                map.put(k, null);
+        if (val.hasHashEntries()) {
+            Value keysIterator = val.getHashKeysIterator();
+            while (keysIterator.hasIteratorNextElement()) {
+                Value key = keysIterator.getIteratorNextElement();
+                if (!key.isString())
+                    continue; // binding metadata keys are always strings
+                map.put(key.asString(), toJavaValue(val.getHashValue(key)));
             }
-            else if (child.hasMembers()) {
-                // nested dict or object
-                map.put(k, toJavaMap(child));
-            }
-            else if (child.isString()) {
-                map.put(k, child.asString());
-            }
-            else if (child.isBoolean()) {
-                map.put(k, child.asBoolean());
-            }
-            else if (child.isNumber()) {
-                // e.g. integer, double, etc.
-                // you could do child.asInt() or child.asDouble()
-                map.put(k, child.as(Number.class));
-            }
-            else if (child.canExecute()) {
-                // function or callable - store as a string or skip
-                map.put(k, "<function>");
-            }
-            else {
-                // fallback
-                map.put(k, child.toString());
-            }
+        } else if (val.hasMembers()) {
+            for (String k : val.getMemberKeys())
+                map.put(k, toJavaValue(val.getMember(k)));
         }
         return map;
+    }
+
+    private static Object toJavaValue(Value child) {
+        if (child == null || child.isNull())
+            return null;
+        if (child.isString())
+            return child.asString();
+        if (child.isBoolean())
+            return child.asBoolean();
+        if (child.isNumber())
+            return child.as(Number.class);
+        if (child.hasArrayElements()) {
+            List<Object> list = new ArrayList<>();
+            for (long i = 0; i < child.getArraySize(); i++)
+                list.add(toJavaValue(child.getArrayElement(i)));
+            return list;
+        }
+        if (child.hasHashEntries() || child.hasMembers())
+            return toJavaMap(child);
+        if (child.canExecute())
+            return "<function>";
+        return child.toString();
     }
 
     /**
