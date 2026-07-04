@@ -5,7 +5,10 @@ plugins {
     id 'eclipse'
     id 'org.graalvm.buildtools.native' version '0.10.6'
     id 'com.gradleup.shadow' version '8.3.5'
-    id 'org.graalvm.python' version '24.2.0' // Match your polyglotVersion
+    // NOTE: the 'org.graalvm.python' plugin is deliberately NOT applied — it is only
+    // needed to vendor pip packages into the jar and it forces a Java 17+ Gradle
+    // daemon; the GraalPy runtime + stdlib come from the org.graalvm.python:python
+    // dependency below
 }
 
 // Adjust these versions to the latest available
@@ -50,7 +53,6 @@ dependencies {
     discoveryFixture testFixtures(project(':nodel-framework'))
     implementation 'commons-daemon:commons-daemon:1.6.0'
     implementation 'org.slf4j:slf4j-api:1.7.10'
-    implementation 'org.python:jython-standalone:2.5.4-rc1'
 
     // for the Nodel HTTP client:
     implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.14'
@@ -331,6 +333,10 @@ test {
     dependsOn 'startNodelhost'
     useJUnitPlatform()
     jvmArgs graalpyAddOpens
+    // GraalPy contexts are memory-hungry and some tests boot host singletons;
+    // isolate each test class in its own worker JVM with enough heap
+    forkEvery = 1
+    maxHeapSize = '2g'
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true
@@ -345,6 +351,8 @@ task integrationTest(type: Test) {
         excludeTags 'e2e'
     }
     jvmArgs graalpyAddOpens
+    forkEvery = 1
+    maxHeapSize = '2g'
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true
@@ -359,6 +367,8 @@ task e2eTest(type: Test) {
         includeTags 'e2e'
     }
     jvmArgs graalpyAddOpens
+    forkEvery = 1
+    maxHeapSize = '2g'
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true

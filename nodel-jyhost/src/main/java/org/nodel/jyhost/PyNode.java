@@ -34,6 +34,7 @@ import org.nodel.Handler.H1;
 import org.nodel.SimpleName;
 import org.nodel.Strings;
 import org.nodel.core.ActionRequestHandler;
+import org.nodel.core.BindingState;
 import org.nodel.core.NodelClientAction;
 import org.nodel.core.NodelClientEvent;
 import org.nodel.core.NodelEventHandler;
@@ -42,10 +43,13 @@ import org.nodel.core.NodelServerEvent;
 import org.nodel.host.*;
 import org.nodel.io.Files;
 import org.nodel.io.Stream;
+import org.nodel.Threads;
 import org.nodel.reflection.Param;
+import org.nodel.reflection.Serialisation;
 import org.nodel.reflection.Service;
 import org.nodel.reflection.Value;
 import org.nodel.threading.CallbackQueue;
+import org.nodel.threading.TimerTask;
 import org.nodel.toolkit.Console;
 import org.nodel.toolkit.ManagedToolkit;
 import org.slf4j.Logger;
@@ -145,32 +149,95 @@ public class PyNode extends BaseDynamicNode {
     private CallbackQueue _callbackQueue = new CallbackQueue();
 
     /**
-     * The node configuration object.
+     * The thread-state handler (GraalPy attaches threads to its context on
+     * demand, so no per-thread preparation is required — unlike Jython's
+     * PySystemState)
      */
-    private NodeConfig _nodeConfig;
-    
+    private H0 _threadStateHandler = new Handler.H0() {
+
+        @Override
+        public void handle() {
+            // (no per-thread state required under GraalVM)
+        }
+
+    };
+
+    /**
+     * The exception handler (surfaces toolkit exceptions in the node console).
+     */
+    private Handler.H2<String, Exception> _exceptionHandler = new Handler.H2<String, Exception>() {
+
+        @Override
+        public void handle(String context, Exception th) {
+            String message = "(" + context + ") " + th.toString();
+            _logger.info(message);
+            _errReader.inject(message);
+        }
+
+    };
+
     /**
      * The config file that contains the node configuration.
+     * (the live config itself lives in BaseNode._config)
      */
     private File _configFile;
 
     private static final String TOOLKIT_RESOURCE = "/org/nodel/jyhost/nodetoolkit.py";
 
-    public PyNode(NodelHost nodelHost, SimpleName name, File root) throws IOException { 
+    /**
+     * How often the script / config files are checked for changes (hot reload).
+     */
+    private static final long MONITOR_PERIOD = 10000;
+
+    /**
+     * Serialises teardown / re-init cycles (hot reload, config saves, close).
+     */
+    private final Object _reloadLock = new Object();
+
+    public PyNode(NodelHost nodelHost, SimpleName name, File root) throws IOException {
         super(name, root);
         _nodelHost = nodelHost;
-        
-        createContext(); 
+        _configFile = new File(root, "nodeConfig.json");
+
+        createContext();
         try {
-            init(); 
+            init();
         } catch (Exception e) {
+            // this instance is about to be abandoned by the host — release anything
+            // the failed init managed to register so a later retry starts clean
+            try { teardown(); } catch (Exception e2) { /* best effort */ }
+
             if (e instanceof IOException) {
                 throw (IOException) e;
             }
             throw new IOException("Failed to initialize Python node", e);
         }
 
-        // init() is called by BaseDynamicNode constructor via checkInit
+        // watch for script / config file changes (hot reload)
+        scheduleMonitor();
+    }
+
+    /**
+     * Self-rescheduling file monitor that drives hot reload (checkReload()).
+     */
+    private void scheduleMonitor() {
+        if (_closed)
+            return;
+
+        s_timerThread.schedule(s_threadPool, new TimerTask() {
+
+            @Override
+            public void run() {
+                try {
+                    checkReload();
+                } catch (Exception exc) {
+                    _logger.warn("Reload monitoring failed; will retry.", exc);
+                } finally {
+                    scheduleMonitor();
+                }
+            }
+
+        }, MONITOR_PERIOD);
     }
 
     /**
@@ -260,6 +327,8 @@ public class PyNode extends BaseDynamicNode {
         // Initialise the toolkit for this node
         _callbackQueue = new CallbackQueue();
         _toolkit = new ManagedToolkit(this)
+            .setExceptionHandler(_exceptionHandler)
+            .setThreadStateHandler(_threadStateHandler)
             .setCallbackHandler(_callbackQueue)
             .attachConsole(new Console.Interface() {
                 @Override
@@ -299,7 +368,15 @@ public class PyNode extends BaseDynamicNode {
                 List<String> warnings = new ArrayList<>();
                 org.graalvm.polyglot.Value pythonGlobals = _pythonContext.getBindings(PYTHON_LANGUAGE_ID);
                 Bindings bindings = BindingsExtractor.extract(pythonGlobals, warnings);
-                applyBindings(bindings); 
+
+                // overlay the saved remote-binding and parameter values (nodeConfig.json)
+                NodeConfig config = loadConfig();
+                injectRemoteBindingValues(config, bindings.remote);
+                injectParamValues(config, bindings.params);
+                _config = config;
+
+                applyBindings(bindings);
+                _bindings = bindings;
                 for (String warning : warnings) {
                     _logger.warn(warning);
                 }
@@ -357,9 +434,28 @@ public class PyNode extends BaseDynamicNode {
             _logger.error("Failed to initialise Python node: " + e.toString());
             _outReader.inject("Failed to initialise Python node: " + e.toString());
             handleException("Initialisation", e);
-            markFailed(e); 
-            throw e; 
+
+            // unregister any bindings that were applied before the failure so a
+            // retry (folder rescan or hot reload) doesn't hit 'Already bound'
+            try { cleanupBindings(); } catch (Exception e2) { /* best effort */ }
+
+            markFailed(e);
+            throw e;
         }
+    }
+
+    /**
+     * Loads the node configuration (nodeConfig.json), falling back to an empty config.
+     */
+    private NodeConfig loadConfig() {
+        try {
+            if (_configFile != null && _configFile.exists())
+                return (NodeConfig) Serialisation.coerceFromJSON(NodeConfig.class, Stream.readFully(_configFile));
+        } catch (Exception exc) {
+            _errReader.inject("Could not parse the node config file; using an empty config. " + exc);
+            _logger.warn("Could not parse " + _configFile, exc);
+        }
+        return new NodeConfig();
     }
 
     /**
@@ -582,7 +678,8 @@ public class PyNode extends BaseDynamicNode {
 
 
     protected void reset() {
-        _pythonContext.close(true);
+        if (_pythonContext != null)
+            _pythonContext.close(true);
     }
 
     protected void enable() {
@@ -607,13 +704,27 @@ public class PyNode extends BaseDynamicNode {
 
         if (currentHash != _fileModifiedHash) {
             _logger.info("Change detected, reloading Python node...");
-            
+
             try {
-                destroy(); 
-                init();    
+                reload();
             } catch (Exception e) {
                 _logger.error("Failed to reload node: " + e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Tears down the current Python context and boots a fresh one; used by
+     * hot reload and config saves.
+     */
+    private void reload() throws Exception {
+        synchronized (_reloadLock) {
+            if (_closed)
+                return;
+
+            teardown();
+            createContext();
+            init();
         }
     }
 
@@ -692,7 +803,13 @@ public class PyNode extends BaseDynamicNode {
         }
 
         String functionName = "local_action_" + actionName.toString();
-        final org.graalvm.polyglot.Value pyFunc = _pythonFunctions.get(functionName);
+        org.graalvm.polyglot.Value cached = _pythonFunctions.get(functionName);
+        if (cached == null) {
+            // resolve lazily from the context (and cache for next time)
+            cachePythonFunction(functionName);
+            cached = _pythonFunctions.get(functionName);
+        }
+        final org.graalvm.polyglot.Value pyFunc = cached;
 
         if (pyFunc == null || !pyFunc.canExecute()) {
             _logger.warn("Local action function '" + functionName + "' not found or not executable.");
@@ -743,9 +860,15 @@ public class PyNode extends BaseDynamicNode {
             return;
 
         String remoteFunctionName = _pythonEventHandlers.get(eventName);
-        if (remoteFunctionName == null) remoteFunctionName = "remote_event_" + eventName; 
+        if (remoteFunctionName == null) remoteFunctionName = "remote_event_" + eventName;
 
-        final org.graalvm.polyglot.Value pyFunc = _pythonFunctions.get(remoteFunctionName);
+        org.graalvm.polyglot.Value cached = _pythonFunctions.get(remoteFunctionName);
+        if (cached == null) {
+            // resolve lazily from the context (and cache for next time)
+            cachePythonFunction(remoteFunctionName);
+            cached = _pythonFunctions.get(remoteFunctionName);
+        }
+        final org.graalvm.polyglot.Value pyFunc = cached;
         if (pyFunc == null || !pyFunc.canExecute()) {
             _logger.warn("Remote event handler function '" + remoteFunctionName + "' not found or not executable.");
             return;
@@ -988,12 +1111,11 @@ public class PyNode extends BaseDynamicNode {
     }
 
     /**
-     * Destroys this node, releasing all resources.
+     * Tears down the Python context and toolkit, releasing all script-side
+     * resources. Does NOT mark the node closed — see close() for permanent
+     * shutdown; reload() calls this before booting a fresh context.
      */
-    private void destroy() {
-        if (_closed) return;
-        _closed = true; 
-
+    private void teardown() {
         if (_pythonContext != null) {
             try {
                 _pythonContext.enter();
@@ -1022,10 +1144,24 @@ public class PyNode extends BaseDynamicNode {
         }
 
         _pythonFunctions.clear();
-        reset(); 
 
         _logger.info("Python node destroyed.");
         _outReader.inject("Python node destroyed.");
+    }
+
+    /**
+     * Permanently shuts down the node.
+     */
+    @Override
+    public void close() {
+        synchronized (_reloadLock) {
+            if (_closed)
+                return;
+
+            super.close();
+
+            teardown();
+        }
     }
 
     /**
@@ -1121,39 +1257,300 @@ public class PyNode extends BaseDynamicNode {
     private void addEvent(SimpleName name, Binding binding) {
         NodelServerEvent event = new NodelServerEvent(getName(), name, binding);
 
-        injectLocalEvent(event); 
+        injectLocalEvent(event);
+
+        // replace the metadata placeholder (e.g. 'local_event_X = LocalEvent(...)')
+        // with the live event object so scripts can call '.emit(...)' on it
+        exposeInPython("local_event_" + name.toString(), event);
     }
 
-    private void addRemoteAction(SimpleName name, NodelActionInfo info) {
-        Binding meta = new Binding(info.title, info.desc, info.group, info.caution, info.order, null); 
+    private void addRemoteAction(final SimpleName name, NodelActionInfo info) {
+        Binding meta = new Binding(info.title, info.desc, info.group, info.caution, info.order, null);
 
-        SimpleName remoteNode = info.node != null ? new SimpleName(info.node) : null;
-        SimpleName remoteAction = info.action != null ? new SimpleName(info.action) : null;
+        // empty bindings are allowed and will show up as "unbound" sources
+        SimpleName remoteNode = !Strings.isBlank(info.node) ? new SimpleName(info.node) : null;
+        SimpleName remoteAction = !Strings.isBlank(info.action) ? new SimpleName(info.action) : null;
 
-        NodelClientAction ra = new NodelClientAction(name, meta, remoteNode, remoteAction);
+        // NOTE: this is a *declarative* binding — it is already present in
+        // _bindings.remote.actions via the extractor, so it is registered
+        // directly instead of via injectRemoteAction() (the toolkit-creation
+        // path, which reserves a new section in the bindings/config)
+        final NodelClientAction ra = new NodelClientAction(name, meta, remoteNode, remoteAction);
 
-        injectRemoteAction(ra, remoteNode, remoteAction);
+        ra.attachMonitor(new Handler.H1<Object>() {
+
+            @Override
+            public void handle(Object arg) {
+                if (ra.isUnbound())
+                    addLog(DateTime.now(), LogEntry.Source.unbound, LogEntry.Type.action, name, arg);
+                else
+                    addLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.action, name, arg);
+            }
+
+        });
+        ra.attachWiredStatusChanged(new Handler.H1<BindingState>() {
+
+            @Override
+            public void handle(BindingState status) {
+                _logger.info("Action binding status: {} - '{}'", name.getReducedName(), status);
+
+                addLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.actionBinding, name, status);
+            }
+
+        });
+
+        _remoteActions.put(ra.getName(), ra);
+        ra.registerActionInterest();
+
+        // replace the metadata placeholder (e.g. 'remote_action_X = RemoteAction(...)')
+        // with the live action object so scripts can call '.call(...)' on it
+        exposeInPython("remote_action_" + name.toString(), ra);
     }
 
-    private void addRemoteEvent(SimpleName name, NodelEventInfo info) {
-        Binding meta = new Binding(info.title, info.desc, info.group, info.caution, info.order, null); 
+    /**
+     * Exposes a host object as a Python global, replacing a declaration
+     * placeholder so scripts can interact with the live Nodel object.
+     */
+    private void exposeInPython(String globalName, Object hostObject) {
+        try {
+            _pythonContext.enter();
+            try {
+                _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember(globalName, hostObject);
+            } finally {
+                try { _pythonContext.leave(); } catch (Exception e) { /* ignore */ }
+            }
+        } catch (Exception exc) {
+            handleException("Exposing '" + globalName + "' to Python", exc);
+        }
+    }
 
-        SimpleName remoteNode = info.node != null ? new SimpleName(info.node) : null;
-        SimpleName remoteEvent = info.event != null ? new SimpleName(info.event) : null;
+    private void addRemoteEvent(final SimpleName name, NodelEventInfo info) {
+        Binding meta = new Binding(info.title, info.desc, info.group, info.caution, info.order, null);
 
-        NodelClientEvent re = new NodelClientEvent(name, meta, remoteNode, remoteEvent);
+        // empty bindings are allowed and will show up as "unbound" sources
+        SimpleName remoteNode = !Strings.isBlank(info.node) ? new SimpleName(info.node) : null;
+        SimpleName remoteEvent = !Strings.isBlank(info.event) ? new SimpleName(info.event) : null;
+
+        // NOTE: this is a *declarative* binding — it is already present in
+        // _bindings.remote.events via the extractor, so it is registered
+        // directly instead of via injectRemoteEvent() (the toolkit-creation
+        // path, which reserves a new section in the bindings/config)
+        final NodelClientEvent re = new NodelClientEvent(name, meta, remoteNode, remoteEvent);
 
         NodelEventHandler handler = (remoteNodeName, remoteEventName, arg) -> {
-            handleEvent(name, arg); 
+            handleEvent(name, arg);
         };
         re.setHandler(handler);
 
-        injectRemoteEvent(re, remoteNode, remoteEvent);
+        re.addBindingStateHandler(new Handler.H1<BindingState>() {
+
+            @Override
+            public void handle(BindingState status) {
+                _logger.info("Event binding status: {} - '{}'", name.getReducedName(), status);
+
+                addLog(DateTime.now(), LogEntry.Source.remote, LogEntry.Type.eventBinding, name, status);
+            }
+
+        });
+
+        // seeds, persists and registers interest (BaseNode)
+        addRemoteEvent(re);
 
         if (info instanceof PyBindingInfo) {
             _pythonEventHandlers.put(name, ((PyBindingInfo) info).getFunctionName());
         }
     }
 
-    private void addParameter(SimpleName name, ParameterBinding param) { /* TODO */ }
+    private void addParameter(SimpleName name, ParameterBinding param) {
+        Object value = param.value;
+
+        String paramName = "param_" + name.toString();
+
+        exposeInPython(paramName, value);
+
+        _parameters.put(name, new ParameterEntry(name, value));
+
+        _logger.info("Created parameter '{}' in script (initial value '{}').", paramName, value);
+    }
+
+    // -----------------------------------------------------------------
+    //  Node management / config REST services (parity with the Jython host)
+    // -----------------------------------------------------------------
+
+    /**
+     * Persists the config and reboots the script context so the new values apply.
+     */
+    private void saveConfig0(NodeConfig config) throws Exception {
+        if (config == null)
+            return;
+
+        _config = config;
+
+        Stream.writeFully(_configFile, Serialisation.serialise(config, 4));
+
+        reload();
+    }
+
+    public class Params {
+
+        @Service(name = "schema", title = "Schema", desc = "Returns the processed schema that produced data that can be used by 'save'.")
+        public Map<String, Object> getSchema() {
+            return _bindings.params.asSchema();
+        }
+
+        @Service(name = "save", title = "Save", desc = "Saves a set of parameters.")
+        public void save(@Param(name = "value", title = "Value", desc = "The parameter values.", isMajor = true, genericClassA = SimpleName.class, genericClassB = Object.class)
+                         ParamValues paramValues) throws Exception {
+            NodeConfig config = _config;
+            config.paramValues = paramValues;
+
+            saveConfig0(config);
+        }
+
+        @Value(name = "value", title = "Value", desc = "The value object.", treatAsDefaultValue = true)
+        public ParamValues getValue() {
+            return _config.paramValues;
+        }
+
+    }
+
+    /**
+     * Holds the live params.
+     */
+    private Params _params = new Params();
+
+    @Service(name = "params", title = "Params", desc = "The live parameters.")
+    public Params getParams() {
+        return _params;
+    }
+
+    public class Remote {
+
+        @Service(name = "schema", title = "Schema", desc = "Returns the processed schema that produces data that can be used by 'save'.")
+        public Map<String, Object> getSchema() {
+            return _bindings.remote.asSchema();
+        }
+
+        @Service(name = "save", title = "Save", desc = "Saves the remote binding values.")
+        public void save(@Param(name = "value", desc = "The remoting binding values.", isMajor = true, title = "Value")
+                         RemoteBindingValues remoteBindingValues) throws Exception {
+            NodeConfig config = _config;
+            config.remoteBindingValues = remoteBindingValues;
+
+            saveConfig0(config);
+        }
+
+        @Value(name = "value", title = "Value", desc = "The remote binding values.", treatAsDefaultValue = true)
+        public RemoteBindingValues getValue() {
+            return _config.remoteBindingValues;
+        }
+
+    }
+
+    /**
+     * Holds the live remote bindings.
+     */
+    private Remote _remote = new Remote();
+
+    @Service(name = "remote", title = "Remote", desc = "The remote bindings.")
+    public Remote getRemote() {
+        return _remote;
+    }
+
+    /**
+     * Restarts the node.
+     */
+    @Service(name = "restart", title = "Restart", desc = "Restarts this node.")
+    public void restart() {
+        _logger.info("restart() called");
+
+        // force the monitor to consider the files changed...
+        _fileModifiedHash = 0;
+
+        // ...and kick a reload off in the background now
+        s_threadPool.execute(new Runnable() {
+
+            @Override
+            public void run() {
+                checkReload();
+            }
+
+        });
+    }
+
+    /**
+     * Renames the node.
+     */
+    @Service(name = "rename", title = "Rename", desc = "Renames a node.")
+    public void rename(SimpleName newName) {
+        _nodelHost.renameNode(this, newName);
+
+        // would get here without any exceptions, the folder should have been renamed
+        _logger.info("This node has been renamed. It will close down and restart under a new name shortly.");
+    }
+
+    /**
+     * Updates the node from a recipe.
+     */
+    @Service(name = "update", title = "Updates", desc = "Updates a node from a recipe.")
+    public void update(@Param(name = "path") String path) {
+        if (Strings.isBlank(path))
+            throw new RuntimeException("No recipe path name was provided");
+
+        File baseDir = _nodelHost.recipes().getRecipeFolder(path);
+
+        if (baseDir == null)
+            throw new RuntimeException("A recipe with path \"" + path + "\" could not be found.");
+
+        Files.updateDir(baseDir, _root);
+
+        _logger.info("This node has been update (basePath={})", path);
+    }
+
+    /**
+     * Removes the node.
+     */
+    @Service(name = "remove", title = "Remove", desc = "Removes a node.")
+    public void remove(@Param(name = "confirm") boolean confirm) {
+        if (!confirm)
+            throw new RuntimeException("'confirm' flag was not set. Nothing removed.");
+
+        this.close();
+
+        // in case of lingering operations, try a few times...
+
+        int triesLeft = 5;
+        for (; triesLeft > 0; triesLeft--) {
+
+            // flush all files
+            Files.tryFlushDir(_root);
+
+            // files are flushed, now the directory itself
+            _root.delete();
+
+            if (!_root.exists())
+                break;
+
+            Threads.safeWait(_signal, 1000);
+
+            // and try some more...
+        }
+
+        if (triesLeft <= 0)
+            throw new RuntimeException("Attempts were made to remove the node however it still exists. Temporary file locking might be preventing the removal of the node. Try again later.");
+
+        // the folder should have been removed!
+        _logger.info("The node has been deleted.");
+    }
+
+    /**
+     * (end-point)
+     */
+    private FilesEndPoint _files = new FilesEndPoint(_root);
+
+    /**
+     * An end-point that supports simple file management.
+     */
+    @Service(name = "files")
+    public FilesEndPoint files() { return _files; }
 }

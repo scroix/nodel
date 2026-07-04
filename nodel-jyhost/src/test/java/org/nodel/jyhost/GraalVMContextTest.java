@@ -74,14 +74,17 @@ public class GraalVMContextTest {
                 .hostClassLoader(hostCl)
                 .build();
 
-            // Evaluate the Python code to import a standard Java class
+            // Look up a standard Java class the same way nodetoolkit.py does (java.type)
             org.graalvm.polyglot.Value result = context.eval("python",
-                "from polyglot import import_value; \n" +
-                "hash_map_class = import_value('java.type:java.util.HashMap'); \n" +
-                "hash_map_class is not None and hash_map_class.is_host_object()"
-            );
+                "import java\n" +
+                "HashMap = java.type('java.util.HashMap')\n" +
+                "m = HashMap()\n" +
+                "m.put('key', 'value')\n" +
+                "m");
 
-            assertTrue(result.asBoolean(), "Should be able to import java.util.HashMap and it should be a host object");
+            assertTrue(result.isHostObject(), "java.type('java.util.HashMap')() should produce a host object");
+            java.util.Map<?, ?> hostMap = result.asHostObject();
+            assertEquals("value", hostMap.get("key"), "Host HashMap should round-trip values set from Python");
 
         } catch (PolyglotException e) {
             fail("PolyglotException occurred during test: " + e.getMessage(), e);
@@ -106,14 +109,12 @@ public class GraalVMContextTest {
                 .hostClassLoader(hostCl)
                 .build();
 
-            // Evaluate the Python code to import a project dependency (JGit)
+            // Look up a project dependency (JGit) the same way nodetoolkit.py does (java.type)
             org.graalvm.polyglot.Value result = context.eval("python",
-                "from polyglot import import_value; \n" +
-                "jgit_class = import_value('java.type:org.eclipse.jgit.api.Git'); \n" +
-                "jgit_class is not None and jgit_class.is_host_object()"
-            );
+                "import java\n" +
+                "java.type('org.eclipse.jgit.api.Git')");
 
-            assertTrue(result.asBoolean(), "Should be able to import org.eclipse.jgit.api.Git and it should be a host object");
+            assertTrue(result.isHostObject(), "java.type('org.eclipse.jgit.api.Git') should resolve to a host class");
 
         } catch (PolyglotException e) {
             // It's possible the dependency isn't on the test classpath by default
