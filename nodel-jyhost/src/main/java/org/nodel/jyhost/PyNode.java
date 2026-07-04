@@ -1341,7 +1341,9 @@ public class PyNode extends BaseDynamicNode {
         NodelServerAction action = new NodelServerAction(getName(), name, binding);
 
         ActionRequestHandler handler = (requestArg) -> {
-            handleActionRequest(name, requestArg, null); 
+            // completion callback: success passes null, failure passes the exception;
+            // failures are already surfaced to the node's console by handleActionRequest
+            handleActionRequest(name, requestArg, (result) -> { /* completed */ });
         };
         action.registerAction(handler);
 
