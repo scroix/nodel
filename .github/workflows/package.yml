@@ -1,0 +1,69 @@
+name: Package Self-Contained
+
+# Goal 3: build a self-contained distributable (bundled Java runtime — no
+# Java needed on the target machine) and prove it works in a container that
+# has no Java at all. See BUILDING.md / README "Running without Java".
+
+on:
+  push:
+    branches: [v3, 'feat/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app-image:
+    name: Linux x64 app-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: the artifact name embeds `git rev-list --count`
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build app-image
+        run: ./gradlew :nodel-jyhost:packageAppImage
+
+      - name: Functional smoke (runner, packaged launcher)
+        run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/jpackage/image/nodelhost/bin/nodelhost"
+
+      - name: Boot + function check in a java-less container
+        run: |
+          set -euo pipefail
+          IMAGE_DIR="$PWD/nodel-jyhost/build/jpackage/image/nodelhost"
+          HOME_DIR="$RUNNER_TEMP/nodel-home"
+          ./scripts/packaged-smoke.sh prepare "$HOME_DIR"
+
+          # debian:bookworm-slim ships no Java: if this boots, the runtime is truly bundled
+          docker run -d -i --name nodel -p 18086:8085 \
+            -v "$IMAGE_DIR":/opt/nodelhost:ro \
+            -v "$HOME_DIR":/nodel -w /nodel \
+            debian:bookworm-slim /opt/nodelhost/bin/nodelhost -p 8085
+
+          echo "asserting the container has no java of its own"
+          if docker exec nodel sh -c 'command -v java'; then
+            echo "container unexpectedly has java on PATH" >&2; exit 1
+          fi
+
+          ./scripts/packaged-smoke.sh verify 18086 || { docker logs nodel; docker rm -f nodel; exit 1; }
+          docker rm -f nodel
+
+      - name: Upload distributable
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodelhost-appimage-linux-x64
+          path: nodel-jyhost/build/distributions/app-image/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14

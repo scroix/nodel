@@ -176,6 +176,44 @@ NODEL_TEST_DISCOVERY=1 ./gradlew :nodel-jyhost:integrationTest --tests org.nodel
 (`--rerun` because the environment variable is not a Gradle task input.)
 
 
+## SELF-CONTAINED PACKAGING (no Java on the target machine)
+
+`./gradlew :nodel-jyhost:packageAppImage` builds a **jpackage app-image** —
+the standalone jar plus a bundled Java 21 runtime — and archives it under
+`nodel-jyhost/build/distributions/app-image/` (`.tar.gz` on Linux, `.zip` on
+macOS). The image itself is left in `nodel-jyhost/build/jpackage/image/`
+(launcher: `nodelhost/bin/nodelhost` on Linux,
+`nodelhost.app/Contents/MacOS/nodelhost` on macOS). The plain
+`build`→runnable-jar flow is unaffected; packaging is additive.
+
+Verify a packaged launcher with the deterministic functional gate:
+```bash
+./scripts/packaged-smoke.sh run nodel-jyhost/build/jpackage/image/nodelhost/bin/nodelhost
+```
+and/or point the full suites at it (`GRAAL_NODEL_JAR=<launcher>` — anything
+not ending in `.jar` is executed directly):
+```bash
+GRAAL_NODEL_JAR=$PWD/nodel-jyhost/build/jpackage/image/nodelhost/bin/nodelhost ./scripts/compat-smoke.sh
+```
+CI (`.github/workflows/package.yml`) builds the Linux x64 package on every
+push, smokes it on the runner AND inside a java-less `debian:bookworm-slim`
+container, then uploads the archive as a workflow artifact.
+
+### Experimental: GraalVM Native Image
+
+A true native binary also builds and passes the full smoke suites:
+```bash
+export GRAALVM_HOME=<GraalVM CE for JDK 24>   # Truffle 24.2.x match
+./gradlew -PnativeImage :nodel-jyhost:nativeCompile
+# -> nodel-jyhost/build/native/nativeCompile/nodelhost (~400 MB, needs ~14 GB RAM to build)
+```
+**Caveat (why it's not the shipped artifact):** recipes may interop with any
+Java class (`java.type(...)`), but a native image only contains classes
+registered at build time — e.g. the default recipes-sync node (JGit) fails
+under the native binary. See POLYGLOT_INTEGRATION.md (goal 3) for the full
+config ledger before touching the metadata under
+`nodel-jyhost/src/main/resources/META-INF/native-image/`.
+
 ### Wire compatibility vs the stock Jython release
 `scripts/compat-smoke.sh` runs a stock release `nodelhost` jar (Jython) and this
 branch's GraalVM host side-by-side using real multicast discovery and the Nodel

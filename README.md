@@ -111,14 +111,51 @@ The platform-independent nature of Nodel also allows it to easily scale to suit 
 System requirements
 ============
 
-* Any operating system capable of hosting the Java Runtime Environment (Java 11+) – including OS X, Windows or Linux 
+* The **self-contained package** needs no Java at all (bundled runtime) – Linux x64 and macOS arm64 today
+* The classic jar runs on any operating system with a Java 21+ runtime – including OS X, Windows or Linux
 * A current web browser
 * Made for mobile
 
-Quick start
-===========
+Quick start (no Java required)
+==============================
+
+Every build produces a **self-contained package** with Java built in — nothing
+to install first. This is the recommended way to run Nodel on a fresh machine
+(e.g. a gallery PC or a Raspberry Pi-class device):
+
+1. **Download** the `nodelhost-...-linux-x64.tar.gz` (Linux) or
+   `nodelhost-...-macos-aarch64.zip` (Apple-silicon Mac) package — from the
+   *Package Self-Contained* workflow artifacts on GitHub Actions (or build it
+   yourself, see below).
+2. **Extract it** somewhere permanent, e.g. your home folder:
+   * Linux: `tar xzf nodelhost-*-linux-x64.tar.gz`
+   * macOS: double-click the zip, or `unzip nodelhost-*-macos-aarch64.zip`
+3. **Make a folder for Nodel's files and start it from there** (Nodel keeps
+   its nodes and settings in the folder you start it from):
+   * Linux:
+     ```
+     mkdir -p ~/nodel-home && cd ~/nodel-home
+     ~/nodelhost/bin/nodelhost
+     ```
+   * macOS:
+     ```
+     mkdir -p ~/nodel-home && cd ~/nodel-home
+     ~/nodelhost.app/Contents/MacOS/nodelhost
+     ```
+     (first run on macOS may need right-click → Open once, or
+     `xattr -dr com.apple.quarantine ~/nodelhost.app`, because the package is
+     not code-signed)
+4. **Open http://localhost:8085** in a browser — the Nodel web UI appears.
+5. Drop some [recipes](https://github.com/museumsvictoria/nodel-recipes) into
+   the `nodes` folder it created, or add nodes from the web UI. Python 3
+   (`script.py`) and JavaScript (`script.js`) recipes both work.
+
+To stop Nodel, press Enter in its console (or just close the terminal).
+
+Quick start (classic jar)
+=========================
 ![5b4c2e9005ffc](https://i.loli.net/2018/07/16/5b4c2e9005ffc.gif)
-* **download a [release](https://github.com/museumsvictoria/nodel/releases)**
+* **download a [release](https://github.com/museumsvictoria/nodel/releases)** (needs Java 21+ installed)
 * open a console
 * `java -jar nodel.jar`
 * drop some [recipes](https://github.com/museumsvictoria/nodel-recipes) into `nodes` folder
@@ -131,8 +168,7 @@ Building and releases
 
 Notes
 =====
-* minimum required Java version is Java 11 (available from [AdoptOpenJDK](https://adoptopenjdk.net/))
-* also runs fine on Java 21 LTS despite console warnings
+* the self-contained package requires no Java install; the classic jar on this branch requires **Java 21+** (available from [Adoptium](https://adoptium.net/))
 * for service / daemon use, see [wiki pages](https://github.com/museumsvictoria/nodel/wiki)
 * check `bootstrap` files for startup config
 

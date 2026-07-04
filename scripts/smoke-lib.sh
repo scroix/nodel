@@ -53,10 +53,17 @@ resolve_graal_jar() { # <repo-root>
 # The host shuts down when stdin reaches EOF, so each host reads from a named
 # FIFO whose write end the calling script holds open (the given fd) for its
 # lifetime. Sets STARTED_PID.
-start_host() { # <home> <jar> <port> <stdin-fd>
+#
+# <jar-or-launcher> is normally a jar (run via $JAVA -jar); anything not ending
+# in .jar is treated as a self-contained launcher (e.g. a jpackage app-image
+# binary) and executed directly — lets the suites gate a packaged artifact.
+start_host() { # <home> <jar-or-launcher> <port> <stdin-fd>
     local home="$1" jar="$2" port="$3" fd="$4"
     mkfifo "$home/.stdin"
-    ( cd "$home" && exec "$JAVA" -jar "$jar" -p "$port" <.stdin >output.log 2>error.log ) &
+    case "$jar" in
+        *.jar) ( cd "$home" && exec "$JAVA" -jar "$jar" -p "$port" <.stdin >output.log 2>error.log ) & ;;
+        *)     ( cd "$home" && exec "$jar" -p "$port" <.stdin >output.log 2>error.log ) & ;;
+    esac
     STARTED_PID=$!
     eval "exec $fd>'$home/.stdin'"
 }

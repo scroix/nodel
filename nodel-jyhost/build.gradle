@@ -32,6 +32,21 @@ configurations.all {
     }
 }
 
+// Native Image build (experimental; see POLYGLOT_INTEGRATION.md §goal-3): the
+// default 'python'/'js' artifacts are the Oracle GraalVM flavours whose bundled
+// native-image config force-enables the (absent-on-CE) Truffle enterprise
+// feature. Building a native image on GraalVM CE needs the '-community'
+// variants, swapped in only for such builds so the shipped jar is unchanged.
+//   ./gradlew -PnativeImage :nodel-jyhost:nativeCompile   (GRAALVM_HOME = GraalVM CE for JDK 24)
+if (project.hasProperty('nativeImage')) {
+    configurations.all {
+        resolutionStrategy.dependencySubstitution {
+            substitute module('org.graalvm.python:python') using module("org.graalvm.python:python-community:${polyglotVersion}")
+            substitute module('org.graalvm.js:js') using module("org.graalvm.js:js-community:${polyglotVersion}")
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }
@@ -166,6 +181,89 @@ tasks.register('unversioned', Copy) {
 }
 
 // ------------------------------------------------------------------
+// Self-contained app-image (jpackage; bundles the toolchain's Java runtime)
+// Additive packaging for machines with no Java installed — the plain
+// 'build' -> runnable-jar flow is untouched. See BUILDING.md / README.
+// ------------------------------------------------------------------
+
+// jpackage lives beside the toolchain JDK's 'java' (same JDK 21 Gradle provisions)
+def packagingLauncher = javaToolchains.launcherFor(java.toolchain)
+def packagingOnWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+def toolchainBinDir = { packagingLauncher.get().executablePath.asFile.parentFile }
+
+tasks.register('jpackageAppImage') {
+    dependsOn 'shadowJar'
+    group = 'distribution'
+    description = 'Builds a self-contained app-image (bundled Java runtime) via jpackage'
+
+    doLast {
+        def jarFile = tasks.shadowJar.archiveFile.get().asFile
+
+        // jpackage copies EVERYTHING in --input into the image: stage the one jar alone
+        def stagingDir = new File(buildDir, 'jpackage/staging')
+        delete stagingDir
+        stagingDir.mkdirs()
+        copy { from jarFile; into stagingDir }
+
+        def imageRoot = new File(buildDir, 'jpackage/image')
+        delete imageRoot
+        imageRoot.mkdirs()
+
+        def jpackageExe = new File(toolchainBinDir(), packagingOnWindows ? 'jpackage.exe' : 'jpackage')
+        def args = [jpackageExe.absolutePath,
+                    '--type', 'app-image',
+                    '--name', 'nodelhost',
+                    '--vendor', 'Nodel',
+                    '--app-version', rootProject.ext.baseVersion,
+                    '--input', stagingDir.absolutePath,
+                    '--main-jar', jarFile.name,
+                    '--dest', imageRoot.absolutePath]
+        // same JPMS openings the shadow jar's manifest carries (jpackage launchers
+        // don't honour the Add-Opens manifest attribute) + native access for GraalPy
+        (graalpyAddOpens + ['--enable-native-access=ALL-UNNAMED']).each {
+            args += ['--java-options', it]
+        }
+        exec { commandLine args }
+
+        logger.lifecycle("app-image: " + imageRoot.listFiles().collect { it.name }.join(', '))
+    }
+}
+
+// Archives the app-image preserving exec bits and symlinks (Gradle's Zip/Tar don't),
+// hence the command-line tar/zip. Output: build/distributions/app-image/
+tasks.register('packageAppImage') {
+    dependsOn 'jpackageAppImage'
+    group = 'distribution'
+    description = 'Archives the jpackage app-image for distribution'
+
+    doLast {
+        def imageRoot = new File(buildDir, 'jpackage/image')
+        def outDir = new File(buildDir, 'distributions/app-image')
+        delete outDir
+        outDir.mkdirs()
+
+        def osName = System.getProperty('os.name').toLowerCase()
+        def os = osName.contains('mac') ? 'macos' : (osName.contains('windows') ? 'windows' : 'linux')
+        def archProp = System.getProperty('os.arch')
+        def arch = (archProp == 'amd64' || archProp == 'x86_64') ? 'x64' : archProp
+        def base = "nodelhost-${rootProject.ext.branch}-${rootProject.ext.baseVersion}-rev${rootProject.ext.rev}-${os}-${arch}"
+
+        if (os == 'macos') {
+            def archive = new File(outDir, "${base}.zip")
+            exec { workingDir imageRoot; commandLine 'zip', '-qry', archive.absolutePath, 'nodelhost.app' }
+        } else if (os == 'linux') {
+            def archive = new File(outDir, "${base}.tar.gz")
+            exec { workingDir imageRoot; commandLine 'tar', 'czf', archive.absolutePath, 'nodelhost' }
+        } else {
+            def archive = new File(outDir, "${base}.zip")
+            exec { workingDir imageRoot; commandLine 'powershell', '-Command', "Compress-Archive -Path nodelhost -DestinationPath '${archive.absolutePath}'" }
+        }
+
+        logger.lifecycle("distributable: " + outDir.listFiles().collect { it.name }.join(', '))
+    }
+}
+
+// ------------------------------------------------------------------
 // GraalVM Native Image Configuration
 // (Requires GraalVM for JDK 21 or later when building native images.)
 // ------------------------------------------------------------------
@@ -181,9 +279,16 @@ graalvmNative {
             buildArgs.addAll([
                     // If certain classes should init at build-time or run-time:
 
-                    '--initialize-at-build-time=org.slf4j',
+                    // NOTE: no '--initialize-at-build-time=org.slf4j' — Nodel's slf4j binding
+                    // (SimpleLoggerFactory -> Level -> timers/threads) would be captured in the
+                    // image heap and native-image rejects run-time state there
                     '-H:+ReportExceptionStackTraces'
             ])
+            // memory-constrained builders (CI runners) can cap the image builder heap,
+            // e.g. -PnativeImageXmx=13g on a 16 GB runner
+            if (project.hasProperty('nativeImageXmx')) {
+                buildArgs.add("-J-Xmx${project.property('nativeImageXmx')}".toString())
+            }
         }
     }
 }
