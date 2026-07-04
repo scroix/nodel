@@ -93,8 +93,62 @@ graph TD
         action/event round-trips pass in BOTH directions.
 
 *   [x] **Demo Python 3 recipes** (Jul 2026)
-    *   `examples/python3/` — TCP device node and timer/scheduler node with
+    *   `recipes/python3/` — TCP device node and timer/scheduler node with
         actions, events and parameters, REST-verified.
+
+*   [x] **GraalJS node support — polyglot showcase** (Jul 2026, goal 2)
+    *   **Language dispatch**: a node folder containing `script.js` boots a
+        GraalJS context; `script.py` boots GraalPy (if both exist, Python wins
+        with a warning). Detection lives in `PyNode.detectScriptLanguage()`;
+        the rest of `PyNode` was already language-neutral (polyglot `Value`
+        API throughout) and is now parameterised by a per-node `_languageId`.
+    *   **JS toolkit shim** (`nodetoolkit.js`): console bridge, binding
+        metadata helpers (`LocalEvent`/`RemoteAction`/`Parameter`),
+        `createLocalAction`/`createLocalEvent`/`createRemoteAction`/
+        `createRemoteEvent`, managed `Timer` + browser-style
+        `setTimeout`/`setInterval`, lifecycle hooks (`beforeMain`/`afterMain`/
+        `atCleanup`), `call`/`callSafe`, `jsonEncode`/`jsonDecode`, and
+        `TCP`/`UDP` helpers (options-object style).
+    *   **Zero changes** to `BindingsExtractor`, `ManagedToolkit`, or the
+        wire/binding layer — confirming the node/toolkit stack is
+        language-agnostic. `nodeConfig.json` handling (params, remote binding
+        values) works for JS nodes unchanged.
+    *   **Errors**: guest exceptions from JS nodes render as JS-style
+        stacks (`TypeError: ... \n    at fn (script.js:12)`) in the web
+        console (`PyNode.formatJavaScriptStack`); Python nodes keep their
+        CPython tracebacks.
+    *   **Verified**: `scripts/polyglot-smoke.sh` — JS + Python peers in ONE
+        host; REST-visible JS actions/events/params; JS parameter
+        save/reload; event and remote-action round trips in both directions
+        (JS→Py and Py→JS). `scripts/compat-smoke.sh` extended with a GraalJS
+        peer cross-bound to the STOCK Jython v2.2.1 host — all four JS↔Jython
+        wire round trips pass alongside the original Python↔Jython ones.
+        Plus `JsNodeTest` (JUnit, runs in CI's integrationTest job) covering
+        dispatch, binding discovery, action invocation, lifecycle hooks and
+        mixed-language hosting.
+    *   **Docs**: `recipes/javascript/README.md` — "writing a JavaScript
+        node" guide with a side-by-side Python/JS surface table; demo recipe
+        under `recipes/javascript/greeter/`.
+    *   **Drive-by fixes** (both languages): REST-invoked declarative actions
+        no longer log an NPE (`handleActionRequest` now tolerates the absent
+        completion callback); `nodetoolkit.py`'s `same_value` and `lookup_*`
+        helpers now call the real `ManagedToolkit` methods
+        (`areSameValue`/`get*` — they previously named methods that don't
+        exist and threw at runtime).
+
+    **Notes for goal 3 (native image)** — architectural record:
+    *   The language set is now **GraalPy + GraalJS** (`org.graalvm.js:js`
+        added in `nodel-jyhost/build.gradle`); native-image configs must
+        include both Truffle languages.
+    *   Language selection is a per-node runtime decision keyed off the
+        script filename — nothing is compile-time bound to Python, so adding
+        a language = new `Context.newBuilder(id)` branch + a toolkit shim
+        resource + traceback formatter.
+    *   GraalJS enforces single-threaded context access (unlike GraalPy's
+        GIL). The node's `CallbackQueue` already serialises actions, events
+        and toolkit callbacks, so this holds in practice; concurrent REST
+        `eval`/`exec` against a busy JS node is the only unserialised path
+        (same behaviour class as Jython's interpreter lock — acceptable).
 
 ---
 
@@ -203,7 +257,10 @@ Verified by `GraalPyJsonRoundTripTest`.
 
 ---
 
-Working demo recipes live in `examples/python3/` (TCP device + scheduler).
+Working demo recipes live in `recipes/python3/` (TCP device + scheduler) and
+`recipes/javascript/` (greeter). For **JavaScript** nodes (`script.js` under
+GraalJS) see the dedicated guide — `recipes/javascript/README.md` — which
+maps every Python convention below to its JS counterpart.
 
 **Python 3 language differences** (vs the Jython 2.5 host)
 
