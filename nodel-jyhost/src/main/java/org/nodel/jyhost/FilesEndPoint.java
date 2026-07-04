@@ -149,7 +149,8 @@ public class FilesEndPoint {
         
         // check if directory is empty and delete that too
         File parent = file.getParentFile();
-        if (parent.exists() && parent.list().length == 0)
+        String[] remaining = parent.list();
+        if (remaining != null && remaining.length == 0)
             parent.delete();
     }
     
@@ -157,7 +158,12 @@ public class FilesEndPoint {
      * (recursive helper)
      */
     private static void listFiles(List<FileInfo> result, String path, File root) {
-        for (File item : root.listFiles()) {
+        File[] items = root.listFiles();
+        if (items == null)
+            // not a directory / vanished / I/O error — nothing to list
+            return;
+
+        for (File item : items) {
             if (item.isHidden())
                 continue;
 

@@ -12,11 +12,17 @@
     <a href="https://github.com/museumsvictoria/nodel/releases">
       <img src="https://img.shields.io/github/downloads/museumsvictoria/nodel/total?logo=github" alt="Total downloads">
     </a>
-    <img src="https://img.shields.io/badge/Java-11%2B-orange.svg" alt="Requires Java 11+">
+    <img src="https://img.shields.io/badge/Java-21%2B-orange.svg" alt="Requires Java 21+">
   </p>
 
 </div>
 
+> [!IMPORTANT]
+> You are on the **`v3` branch** — **Nodel 3.x**, the next-generation line where node
+> scripts run on **GraalVM Python (Python 3)** instead of Jython 2.5. It is developed
+> alongside regular Nodel (2.2.x, the `dev` branch) and remains fully wire-compatible
+> with existing 2.2.x hosts. See `POLYGLOT_INTEGRATION.md` for architecture and status,
+> and `examples/python3/` for modern recipe examples.
 
 Nodel is an open source digital media control system for museums and galleries.
 
