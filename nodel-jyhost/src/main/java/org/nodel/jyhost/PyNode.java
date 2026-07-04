@@ -886,7 +886,11 @@ public class PyNode extends BaseDynamicNode {
 
     // --- Action / Event Handling --- Override methods from BaseDynamicNode ---
 
-    public void handleActionRequest(SimpleName actionName, Object arg, final ActionRequestHandler handler) {
+    public void handleActionRequest(SimpleName actionName, Object arg, ActionRequestHandler handlerOrNull) {
+        // fire-and-forget callers (e.g. a script's lookup_local_action(...).call()) pass no
+        // completion handler; failures are logged to the node's console regardless
+        final ActionRequestHandler handler = (handlerOrNull != null) ? handlerOrNull : (result) -> { };
+
         if (_closed || _pythonContext == null) {
              handler.handleActionRequest(new RuntimeException("Node is closed or not initialised"));
              return;
@@ -1344,7 +1348,7 @@ public class PyNode extends BaseDynamicNode {
         NodelServerAction action = new NodelServerAction(getName(), name, binding);
 
         ActionRequestHandler handler = (requestArg) -> {
-            handleActionRequest(name, requestArg, null); 
+            handleActionRequest(name, requestArg, null); // fire-and-forget; completion not needed
         };
         action.registerAction(handler);
 

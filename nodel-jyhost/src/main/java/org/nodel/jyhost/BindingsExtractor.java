@@ -12,7 +12,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
 
 import org.nodel.SimpleName;
@@ -194,57 +193,55 @@ public class BindingsExtractor {
         Exception exc = null;
 
         try {
-            // If the value has members, treat it like a dict
-            if (definition.hasMembers()) {
-                // Convert to a Java Map to pass into Serialisation
-                Map<String, Object> dictMap = toJavaMap(definition);
+            if (definition.isNull()) {
+                // None: fall through to the empty binding below
+            }
+            // If it's a string, it might be JSON or a simple title
+            else if (definition.isString()) {
+                String asText = definition.asString();
+                if (!(asText == null || asText.isEmpty())) {
+                    if (asText.trim().startsWith("{")) {
+                        // Parse as JSON
+                        binding = (Binding) Serialisation.coerceFromJSON(Binding.class, asText);
+                    } else {
+                        // Just treat it as a user-friendly title
+                        binding = new Binding();
+                        binding.title = asText;
+                    }
+                }
+            }
+            // If it's executable (a function), we can check __doc__
+            // (must come before the dict/members check: functions have members too)
+            else if (definition.canExecute()) {
+                binding = new Binding();
+                // Attempt to read docstring:
+                Value docVal = definition.getMember("__doc__");
+                if (docVal != null && docVal.isString()) {
+                    String docStr = docVal.asString();
+                    if (docStr.trim().startsWith("{")) {
+                        // docstring might be JSON
+                        try {
+                            binding = (Binding) Serialisation.coerceFromJSON(Binding.class, docStr);
+                        } catch (Exception docExc) {
+                            // fallback: store doc as title
+                            binding.title = docStr;
+                        }
+                    } else {
+                        // fallback: store doc as title
+                        binding.title = docStr;
+                    }
+                }
+            }
+            // A Python dict exposes its entries as *hash entries* (its members are just
+            // attributes/methods); other member-bearing objects are treated like a dict too.
+            // toJavaMap dispatches on both.
+            else if (definition.hasHashEntries() || definition.hasMembers()) {
                 binding = (Binding) Serialisation.coerce(
                         Binding.class,
-                        dictMap,
+                        toJavaMap(definition),
                         String.class,
                         Object.class
                 );
-            }
-            else {
-                // If it's not a dict, maybe it's None or a simple string
-                if (!definition.isNull()) {
-                    // If it's a string, it might be JSON or a simple title
-                    if (definition.isString()) {
-                        String asText = definition.asString();
-                        if (!(asText == null || asText.isEmpty())) {
-                            if (asText.trim().startsWith("{")) {
-                                // Parse as JSON
-                                binding = (Binding) Serialisation.coerceFromJSON(Binding.class, asText);
-                            } else {
-                                // Just treat it as a user-friendly title
-                                binding = new Binding();
-                                binding.title = asText;
-                            }
-                        }
-                    }
-                    // If it's executable (a function), we can check __doc__:
-                    else if (definition.canExecute()) {
-                        binding = new Binding();
-                        // Attempt to read docstring:
-                        Value docVal = definition.getMember("__doc__");
-                        if (docVal != null && docVal.isString()) {
-                            String docStr = docVal.asString();
-                            if (docStr.trim().startsWith("{")) {
-                                // docstring might be JSON
-                                try {
-                                    Binding docBinding = (Binding) Serialisation.coerceFromJSON(Binding.class, docStr);
-                                    binding = docBinding;
-                                } catch (Exception docExc) {
-                                    // fallback: store doc as title
-                                    binding.title = docStr;
-                                }
-                            } else {
-                                // fallback: store doc as title
-                                binding.title = docStr;
-                            }
-                        }
-                    }
-                }
             }
         } catch (Exception e) {
             exc = e;
@@ -272,46 +269,53 @@ public class BindingsExtractor {
     }
 
     /**
-     * Converts a GraalVM Python Value (that "hasMembers()") into a Java Map.
-     * Recursively converts nested structures. Adjust as needed for your environment.
+     * Converts a GraalVM Python Value into a Java Map. Python dicts expose their
+     * entries as hash entries; other objects expose members. Nested structures
+     * (e.g. a 'schema' dict with an 'enum' list) are converted recursively.
+     *
+     * Deliberately separate from {@link org.nodel.toolkit.PolyglotValues#toPlainJava}:
+     * that converter targets JSON round-trips (None becomes a JSONObject.NULL sentinel,
+     * no member walking), whereas Serialisation.coerce here needs plain nulls and
+     * member-bearing host objects treated like dicts. If a Value-introspection bug
+     * turns up in one, check the other.
      */
     private static Map<String, Object> toJavaMap(Value val) {
         Map<String, Object> map = new LinkedHashMap<>();
-        if (!val.hasMembers()) {
-            return map; // or throw?
-        }
-        Set<String> keys = val.getMemberKeys();
-        for (String k : keys) {
-            Value child = val.getMember(k);
-
-            if (child == null || child.isNull()) {
-                map.put(k, null);
+        if (val.hasHashEntries()) {
+            Value keysIterator = val.getHashKeysIterator();
+            while (keysIterator.hasIteratorNextElement()) {
+                Value key = keysIterator.getIteratorNextElement();
+                if (!key.isString())
+                    continue; // binding metadata keys are always strings
+                map.put(key.asString(), toJavaValue(val.getHashValue(key)));
             }
-            else if (child.hasMembers()) {
-                // nested dict or object
-                map.put(k, toJavaMap(child));
-            }
-            else if (child.isString()) {
-                map.put(k, child.asString());
-            }
-            else if (child.isBoolean()) {
-                map.put(k, child.asBoolean());
-            }
-            else if (child.isNumber()) {
-                // e.g. integer, double, etc.
-                // you could do child.asInt() or child.asDouble()
-                map.put(k, child.as(Number.class));
-            }
-            else if (child.canExecute()) {
-                // function or callable - store as a string or skip
-                map.put(k, "<function>");
-            }
-            else {
-                // fallback
-                map.put(k, child.toString());
-            }
+        } else if (val.hasMembers()) {
+            for (String k : val.getMemberKeys())
+                map.put(k, toJavaValue(val.getMember(k)));
         }
         return map;
+    }
+
+    private static Object toJavaValue(Value child) {
+        if (child == null || child.isNull())
+            return null;
+        if (child.isString())
+            return child.asString();
+        if (child.isBoolean())
+            return child.asBoolean();
+        if (child.isNumber())
+            return child.as(Number.class);
+        if (child.hasArrayElements()) {
+            List<Object> list = new ArrayList<>();
+            for (long i = 0; i < child.getArraySize(); i++)
+                list.add(toJavaValue(child.getArrayElement(i)));
+            return list;
+        }
+        if (child.hasHashEntries() || child.hasMembers())
+            return toJavaMap(child);
+        if (child.canExecute())
+            return "<function>";
+        return child.toString();
     }
 
     /**
