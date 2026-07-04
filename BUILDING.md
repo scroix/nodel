@@ -196,8 +196,8 @@ not ending in `.jar` is executed directly):
 GRAAL_NODEL_JAR=$PWD/nodel-jyhost/build/jpackage/image/nodelhost/bin/nodelhost ./scripts/compat-smoke.sh
 ```
 CI (`.github/workflows/package.yml`) builds the Linux x64 package on every
-push, smokes it on the runner AND inside a java-less `debian:bookworm-slim`
-container, then uploads the archive as a workflow artifact.
+push, smokes it inside a java-less `debian:bookworm-slim` container, then
+uploads the archive as a workflow artifact.
 
 ### Experimental: GraalVM Native Image
 

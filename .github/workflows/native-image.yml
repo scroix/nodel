@@ -22,22 +22,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0
 
+      # exports GRAALVM_HOME/JAVA_HOME itself
       - name: Setup GraalVM CE 24
         uses: graalvm/setup-graalvm@v1
         with:
           java-version: '24'
           distribution: 'graalvm-community'
-          set-java-home: true
-
-      - name: Setup Java 21 (Gradle toolchain bootstraps itself)
-        run: echo "GRAALVM_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build native image
-        run: ./gradlew -PnativeImage -PnativeImageXmx=13g :nodel-jyhost:nativeCompile
+        run: ./gradlew -PnativeImage :nodel-jyhost:nativeCompile
+        env:
+          # cap the image builder heap for the 16 GB runner
+          NATIVE_IMAGE_OPTIONS: -J-Xmx13g
 
       - name: Functional smoke against the native binary
         run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/native/nativeCompile/nodelhost"
@@ -54,3 +55,4 @@ jobs:
           path: nodel-jyhost/build/native/nativeCompile/nodelhost-native-linux-x64.tar.gz
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0   # already a .tar.gz; don't deflate it again

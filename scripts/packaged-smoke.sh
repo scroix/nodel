@@ -54,7 +54,7 @@ EOF
 }
 
 verify_host() { # <port>
-    local port="$1" RESULT=0 i
+    local port="$1" RESULT=0
     local STAMP=$$-$(date +%s)
 
     wait_http "$port" "packaged host"
@@ -67,17 +67,8 @@ verify_host() { # <port>
     fi
 
     log "checking both node types initialised"
-    node_started() { # <node> <marker> <label>
-        for i in $(seq 1 45); do
-            if console_contains "$port" "$1" "$2"; then
-                printf 'PASS: %s\n' "$3"; return 0
-            fi
-            sleep 1
-        done
-        printf 'FAIL: %s\n' "$3" >&2; return 1
-    }
-    node_started PyDemo "py demo started" "Python 3 node booted (GraalPy)" || RESULT=1
-    node_started JSDemo "js demo started" "JavaScript node booted (GraalJS)" || RESULT=1
+    wait_console_marker "$port" PyDemo "py demo started" "Python 3 node booted (GraalPy)" || RESULT=1
+    wait_console_marker "$port" JSDemo "js demo started" "JavaScript node booted (GraalJS)" || RESULT=1
 
     log "checking bindings are REST-visible"
     if curl -sf "http://127.0.0.1:$port/REST/nodes/PyDemo/actions" | grep -q '"SendPing"'; then
@@ -120,7 +111,6 @@ case "${1:-}" in
         PORT="${3:-8198}"
         case "$LAUNCHER" in
             *.jar) require_java21 ;;   # a jar needs a JVM; a launcher brings its own
-            *)     JAVA="" ;;
         esac
         trap cleanup EXIT
         HOME_DIR="$ROOT/build/packaged-smoke/host"

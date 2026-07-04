@@ -148,33 +148,27 @@ public class Launch {
     }
 
     /**
-     * In some console-less environments (e.g. javaw.exe, 'nohup', 'docker run -d', a
-     * double-clicked app-image), stdin may be invalid or immediately at EOF but should not
-     * prevent start up. A late EOF (e.g. a supervising process closing a pipe after a long
-     * run) still initiates an orderly shutdown.
+     * In some console-less environments, stdin may be invalid (e.g. javaw.exe) or immediately
+     * at EOF (e.g. a double-clicked app-image, 'nohup', 'docker run -d'), which should not
+     * prevent start up. The self-contained launcher declares the EOF case by baking
+     * '-Dnodel.consoleless=true' into its java options (see 'jpackageAppImage'); otherwise
+     * EOF initiates an orderly shutdown as always (pipes, test harnesses, Ctrl-D).
      */
     private static void tryReadFromConsole() {
-        long started = System.currentTimeMillis();
         try {
-            int read = System.in.read();
-            if (read >= 0)
-                return; // genuine console input
+            if (System.in.read() >= 0)
+                return; // genuine console input -> shutdown
 
-            // EOF: within moments of start-up with no interactive console attached means
-            // stdin was never real (/dev/null); don't treat it as a shutdown request
-            if (System.console() == null && System.currentTimeMillis() - started < 2000) {
-                System.err.println("(Running in console-less mode. To terminate process, kill manually or via /diagnostics)");
-
-                // no signals available so just sleep
-                Threads.sleep(Long.MAX_VALUE);
-            }
+            if (!Boolean.getBoolean("nodel.consoleless"))
+                return; // EOF -> shutdown
         } catch (IOException exc) {
-            // unlikely this will be seen anywhere but dump anyway
-            System.err.println("(Running in console-less mode. To terminate process, kill manually or via /diagnostics)");
-
-            // no signals available so just sleep
-            Threads.sleep(Long.MAX_VALUE);
+            // invalid stdin; fall through to console-less mode
         }
+
+        System.err.println("(Running in console-less mode. To terminate process, kill manually or via /diagnostics)");
+
+        // no signals available so just sleep
+        Threads.sleep(Long.MAX_VALUE);
     }
 
     /**

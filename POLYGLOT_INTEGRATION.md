@@ -147,18 +147,18 @@ graph TD
         java-less `debian:bookworm-slim` container (CI); passes
         `packaged-smoke.sh`, `polyglot-smoke.sh` and `compat-smoke.sh`.
     *   **CI**: `.github/workflows/package.yml` builds the Linux x64 app-image
-        on every push (v3 / feat branches), smokes it on the runner, re-smokes
-        it inside a java-less container (asserting `java` is absent), and
-        uploads the tar.gz artifact.
+        on every push (v3 / feat branches), smokes it inside a java-less
+        container (asserting `java` is absent), and uploads the tar.gz
+        artifact.
     *   **Smoke plumbing**: `smoke-lib.sh start_host` now execs a non-`.jar`
         `GRAAL_NODEL_JAR` directly, so every suite can gate a packaged
         launcher; `scripts/packaged-smoke.sh` (prepare/verify/run) is the
         deterministic, discovery-free functional gate used by CI.
-    *   **Console-less stdin fix** (`Launch.tryReadFromConsole`): instant EOF
-        with no attached console (double-click, `nohup`, `docker run -d`,
-        `< /dev/null`) no longer shuts the host down at boot; a *late* EOF
-        (test harnesses closing the stdin pipe) still triggers orderly
-        shutdown.
+    *   **Console-less stdin fix** (`Launch.tryReadFromConsole`): the packaged
+        launcher bakes `-Dnodel.consoleless=true` into its java options, so an
+        instant stdin EOF (double-click, `nohup`, `docker run -d`) no longer
+        shuts the packaged host down at boot. Without the property (plain jar,
+        test harnesses) EOF still means orderly shutdown, as always.
 
     **Native Image attempt (time-boxed, goal 3) — outcome: WORKS but demoted
     to experimental.** `./gradlew -PnativeImage :nodel-jyhost:nativeCompile`

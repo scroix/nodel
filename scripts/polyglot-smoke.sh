@@ -109,20 +109,8 @@ STAMP=$$-$(date +%s)
 RESULT=0
 
 log "checking both node types initialised in one host"
-node_started() { # <node> <marker> <label>
-    local i
-    for i in $(seq 1 30); do
-        if console_contains "$PG_PORT" "$1" "$2"; then
-            printf 'PASS: %s\n' "$3"
-            return 0
-        fi
-        sleep 1
-    done
-    printf 'FAIL: %s\n' "$3" >&2
-    return 1
-}
-node_started JSPeer "js peer started" "JavaScript node booted (script.js)" || RESULT=1
-node_started PyPeer "py peer started" "Python node booted (script.py)" || RESULT=1
+wait_console_marker "$PG_PORT" JSPeer "js peer started" "JavaScript node booted (script.js)" 30 || RESULT=1
+wait_console_marker "$PG_PORT" PyPeer "py peer started" "Python node booted (script.py)" 30 || RESULT=1
 
 log "checking the JS node's bindings are visible over REST"
 if curl -sf "http://127.0.0.1:$PG_PORT/REST/nodes/JSPeer/actions" | grep -q '"SendPing"'; then

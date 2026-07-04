@@ -9,6 +9,10 @@ on:
     branches: [v3, 'feat/**']
   workflow_dispatch:
 
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -22,7 +26,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history: the artifact name embeds `git rev-list --count`
+          # full commit graph (the artifact name embeds `git rev-list --count`)
+          # without historical blobs/trees
+          fetch-depth: 0
+          filter: tree:0
 
       - name: Setup Java 21
         uses: actions/setup-java@v4
@@ -36,9 +43,8 @@ jobs:
       - name: Build app-image
         run: ./gradlew :nodel-jyhost:packageAppImage
 
-      - name: Functional smoke (runner, packaged launcher)
-        run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/jpackage/image/nodelhost/bin/nodelhost"
-
+      # the container check below is the strictest gate (boots AND functions with
+      # no Java present), so no separate runner-level smoke is needed
       - name: Boot + function check in a java-less container
         run: |
           set -euo pipefail
@@ -67,3 +73,4 @@ jobs:
           path: nodel-jyhost/build/distributions/app-image/*.tar.gz
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0   # already a .tar.gz; don't deflate it again
