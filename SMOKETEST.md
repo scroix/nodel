@@ -20,11 +20,11 @@ When running these smoke tests with an AI agent (Claude Code, etc.):
 - **Use unique markers.** When invoking actions, use a fresh value (e.g. `smoke-$RANDOM`) so
   console/activity assertions can't match stale entries from an earlier run.
 - **The browser section is mandatory**, not decorative. Perform it with real browser tooling
-  (Claude Preview MCP, claude-in-chrome, Playwright). Read §6's tooling notes first — there are
+  (Claude Preview MCP, claude-in-chrome, Playwright). Read §7's tooling notes first — there are
   two known automation traps (zero-size viewport, coordinate clicks that don't land).
 - **Do not modify platform source** (Java, webui, gradle config) to make a check pass. A check
   that fails against unmodified source is a finding: record it under Known Issues.
-- **Clean up.** §8 must leave no host process, no `/tmp/nodel-smoke-host`, and a `git status`
+- **Clean up.** §9 must leave no host process, no `/tmp/nodel-smoke-host`, and a `git status`
   showing nothing beyond what you intended to change.
 
 ---
@@ -50,9 +50,10 @@ lsof -ti :8089 | xargs kill 2>/dev/null; rm -rf /tmp/nodel-smoke-host
 lsof -ti :8089 || echo "port 8089 free"
 # Expected: "port 8089 free"
 
-# 3. Fixture recipes present
-ls recipes/smoketest/smoketest-producer/script.py recipes/smoketest/smoketest-consumer/script.py
-# Expected: both paths print (no "No such file")
+# 3. Fixture recipes present (incl. the JavaScript recipe for §6)
+ls recipes/smoketest/smoketest-producer/script.py recipes/smoketest/smoketest-consumer/script.py \
+   recipes/javascript/greeter/script.js
+# Expected: all three paths print (no "No such file")
 ```
 
 ---
@@ -80,7 +81,7 @@ force the suite to execute.
   actionable tasks: 30 executed, 1 up-to-date` when forced — `npmSetup` stays up-to-date)
 - On the order of 138 `PASSED` lines, `0` FAILED (grep -c exits 1 on zero matches — that's the pass case)
 - The only skipped *test* is `DiscoverySmokeTests > testNodeUrlsContainsLocalNode()` (opt-in
-  multicast, see §7). A bare grep for `SKIPPED` also matches gradle *task* lines like
+  multicast, see §8). A bare grep for `SKIPPED` also matches gradle *task* lines like
   `Task :nodel-webui-js:npmSetup SKIPPED` — ignore those.
 - Artifacts appear:
 
@@ -125,8 +126,8 @@ classpath so discovery is deterministic.
    ADD_OPENS="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
    ```
 
-**Option A — Claude Preview MCP** (preferred for agents; the same server then backs §6's browser
-checks). Create `.claude/launch.json` (untracked — delete it in §8):
+**Option A — Claude Preview MCP** (preferred for agents; the same server then backs §7's browser
+checks). Create `.claude/launch.json` (untracked — delete it in §9):
 
 ```json
 {
@@ -388,7 +389,83 @@ curl -s "$BASE/REST/nodes/Smoke%20Consumer/activity?from=0" | head -c 400
 
 ---
 
-## 6. Web UI (browser-driven)
+## 6. GraalJS Node (script.js)
+
+v3 hosts are polyglot: a node folder containing `script.js` boots a GraalJS context instead of
+GraalPy — same binding model, REST surface and wire protocols. This section proves language
+dispatch, JS binding discovery and a cross-language binding, using the demo recipe at
+`recipes/javascript/greeter/` (authoring guide: `recipes/javascript/README.md`).
+
+```bash
+cp -R recipes/javascript/greeter "/tmp/nodel-smoke-host/nodes/JS Greeter"
+
+# Poll until the node spins up (live folder scan, same as §4)
+for i in $(seq 1 30); do curl -sf -o /dev/null "$BASE/REST/nodes/JS%20Greeter/console?from=0&max=1" && break; sleep 1; done
+
+# Boot sequence — JavaScript (not Python) markers, and the JS toolkit banner
+curl -s "$BASE/REST/nodes/JS%20Greeter/console?from=0&max=8"
+# Expected rows (oldest→newest): "Initialising JavaScript node..." → "Nodel toolkit loaded
+# (JavaScript) - console bridge established" → "Executed toolkit bootstrap script" →
+# "Greeter node started (greeting: \"Hello\")" → "JavaScript node initialised."
+
+# Language dispatch visible in the node map
+curl -s "$BASE/REST/nodes" | grep -o '"JS Greeter":{[^}]*}'
+# Expected: contains "desc":"GraalVM JavaScript Node" (Python nodes say "GraalVM Python Node")
+
+# JS bindings discovered from the global object — metadata (title/group/schema) intact
+curl -s "$BASE/REST/nodes/JS%20Greeter/actions"
+# Expected: {"Reset":{"group":"Greeter","name":"Reset","order":2,...,"title":"Reset"},"Greet":{"name":"Greet",...}}
+# (Greet is a convention-named function — function local_action_Greet(arg);
+#  Reset was created programmatically with metadata — createLocalAction('Reset', fn, {...}))
+curl -s "$BASE/REST/nodes/JS%20Greeter/events"
+# Expected: {"Greeted":{"schema":{"type":"object","properties":{"name":{...},"message":{...}}},
+#            ...,"group":"Greeter",...}} — the JS metadata object survived extraction
+curl -s "$BASE/REST/nodes/JS%20Greeter/params/schema"
+# Expected: {"type":"object","title":"Parameters","properties":{"Greeting":{"type":"string","hint":"Hello",...}}}
+
+# Parameter save / reload round trip (same semantics as a Python node)
+curl -s -w " (status %{http_code})\n" -X POST "$BASE/REST/nodes/JS%20Greeter/params/save" \
+  -H "Content-Type: application/json" -d '{"Greeting": "Gday"}'
+# Expected: true (status 200); the node restarts with the saved value
+sleep 6
+curl -s -X POST "$BASE/REST/nodes/JS%20Greeter/actions/Greet/call" \
+  -H "Content-Type: application/json" -d '{"arg":"Nodel"}'
+# Expected: true
+curl -s "$BASE/REST/nodes/JS%20Greeter/console?from=0&max=3" | grep -o 'Gday, Nodel![^"]*'
+# Expected: Gday, Nodel! (greeting #1)
+curl -s "$BASE/REST/nodes/JS%20Greeter/activity?from=0" | head -c 300
+# Expected: the local "Greeted" event with its STRUCTURED arg intact:
+#   {"source":"local","type":"event","alias":"Greeted","arg":{"name":"Nodel","message":"Gday, Nodel!"}}
+
+# Cross-language binding: the Python consumer's remote event wired onto the JS node's event
+curl -s -w " (status %{http_code})\n" -X POST "$BASE/REST/nodes/Smoke%20Consumer/remote/save" \
+  -H "Content-Type: application/json" \
+  -d '{"actions":{},"events":{"IncomingPing":{"node":"JS Greeter","event":"Greeted"}}}'
+# Expected: true (status 200)
+sleep 4
+curl -s -X POST "$BASE/REST/nodes/JS%20Greeter/actions/Greet/call" \
+  -H "Content-Type: application/json" -d '{"arg":"cross-language"}'
+# Expected: true
+for i in $(seq 1 10); do curl -s "$BASE/REST/nodes/Smoke%20Consumer/console?from=0&max=10" | grep -q "cross-language" && break; sleep 1; done
+curl -s "$BASE/REST/nodes/Smoke%20Consumer/console?from=0&max=3" | grep -o 'Received ping: .*"'
+# Expected: Received ping: {name: \\"cross-language\\", message: \\"Gday, cross-language!\\"}
+# (quotes JSON-escaped by the console endpoint; an object emitted by GraalJS, received by a
+#  GraalPy handler — structure preserved end-to-end)
+
+# Restore the §5 binding so §7's UI cross-check behaves as documented
+curl -s -w " (status %{http_code})\n" -X POST "$BASE/REST/nodes/Smoke%20Consumer/remote/save" \
+  -H "Content-Type: application/json" \
+  -d '{"actions":{},"events":{"IncomingPing":{"node":"Smoke Producer","event":"Ping"}}}'
+# Expected: true (status 200)
+```
+
+Deeper cross-language coverage — both directions, remote actions, and GraalJS against a stock
+2.x Jython host over real multicast — is scripted in `scripts/polyglot-smoke.sh` and
+`scripts/compat-smoke.sh`.
+
+---
+
+## 7. Web UI (browser-driven)
 
 Perform with real browser tooling against `http://127.0.0.1:8089`. With Claude Preview MCP the
 §2 Option A server is already the target; otherwise use claude-in-chrome / Playwright against
@@ -407,16 +484,16 @@ the same URL.
 
 | # | Check | Action | Expected observable |
 |---|-------|--------|---------------------|
-| 6.1 | Node list renders | Load `http://127.0.0.1:8089/` | URL settles at `/locals.xml#Locals`. Navbar with the nodel logo and a host icon whose tooltip (`title` attribute) is "Browse this host"; filter box; `total: 3`; links for `Smoke Producer`, `Smoke Consumer`, and the recipes-sync node. |
-| 6.2 | Node page renders | Navigate to `/nodes/SmokeProducer/` | URL settles at `.../nodel.xml#Activity`; `document.title` = `Smoke Producer`; navbar brand shows the node name; Console panel shows the same entries as the REST console (e.g. `Smoke producer started`). |
-| 6.3 | Action form renders lazily | Expand the "Ping" group panel (`$(document.getElementById('0_actsig_group')).collapse('show')` — the group's form content only renders on expand) | Panel gains class `collapse in`; an `input.form-control` and a `Send Ping` submit button appear inside `.nodel-schema-action[data-name="sendPing"]`. |
-| 6.4 | Invoke action from UI | Fill the input with a fresh marker (e.g. `ui-$RANDOM`), then JS-click the `Send Ping` button | Within ~2s the on-page Console shows `Ping sent: <marker>`. Cross-check over REST: producer console has `Ping sent: <marker>` **and** (binding from §5 still live) consumer console has `Received ping: <marker>`. |
-| 6.5 | Add node via UI | On `/`, click `.nodel-add .addgrp .dropdown-toggle`, fill `.nodel-add input.nodenamval` with `UI Smoke Node`, click `.nodel-add .nodeaddsubmit` | Browser navigates to the new node's page; its console shows the v3 default stub starting (`Hello from Python` between the `Initialising Python node...` / `Python node initialised.` markers — v3 no longer provisions the 2.x example recipe, see Known Issues). REST: `UI Smoke Node` appears in `$BASE/REST/nodes` within a few seconds. |
-| 6.6 | Cleanup UI node | `curl -s -X POST "$BASE/REST/nodes/UI%20Smoke%20Node/remove?confirm=true" -H "Content-Type: application/json" -d '{}'` | `true`; node disappears from `$BASE/REST/nodes`. |
+| 7.1 | Node list renders | Load `http://127.0.0.1:8089/` | URL settles at `/locals.xml#Locals`. Navbar with the nodel logo and a host icon whose tooltip (`title` attribute) is "Browse this host"; filter box; `total: 3`; links for `Smoke Producer`, `Smoke Consumer`, and the recipes-sync node. |
+| 7.2 | Node page renders | Navigate to `/nodes/SmokeProducer/` | URL settles at `.../nodel.xml#Activity`; `document.title` = `Smoke Producer`; navbar brand shows the node name; Console panel shows the same entries as the REST console (e.g. `Smoke producer started`). |
+| 7.3 | Action form renders lazily | Expand the "Ping" group panel (`$(document.getElementById('0_actsig_group')).collapse('show')` — the group's form content only renders on expand) | Panel gains class `collapse in`; an `input.form-control` and a `Send Ping` submit button appear inside `.nodel-schema-action[data-name="sendPing"]`. |
+| 7.4 | Invoke action from UI | Fill the input with a fresh marker (e.g. `ui-$RANDOM`), then JS-click the `Send Ping` button | Within ~2s the on-page Console shows `Ping sent: <marker>`. Cross-check over REST: producer console has `Ping sent: <marker>` **and** (binding from §5 still live) consumer console has `Received ping: <marker>`. |
+| 7.5 | Add node via UI | On `/`, click `.nodel-add .addgrp .dropdown-toggle`, fill `.nodel-add input.nodenamval` with `UI Smoke Node`, click `.nodel-add .nodeaddsubmit` | Browser navigates to the new node's page; its console shows the v3 default stub starting (`Hello from Python` between the `Initialising Python node...` / `Python node initialised.` markers — v3 no longer provisions the 2.x example recipe, see Known Issues). REST: `UI Smoke Node` appears in `$BASE/REST/nodes` within a few seconds. |
+| 7.6 | Cleanup UI node | `curl -s -X POST "$BASE/REST/nodes/UI%20Smoke%20Node/remove?confirm=true" -H "Content-Type: application/json" -d '{}'` | `true`; node disappears from `$BASE/REST/nodes`. |
 
 ---
 
-## 7. Optional: Real Multicast Discovery (environment permitting)
+## 8. Optional: Real Multicast Discovery (environment permitting)
 
 Everything above uses LocalAutoDNS deliberately. To exercise production multicast discovery:
 
@@ -438,7 +515,7 @@ NODEL_TEST_DISCOVERY=1 ./gradlew :nodel-jyhost:integrationTest --tests org.nodel
 
 ---
 
-## 8. Cleanup
+## 9. Cleanup
 
 ```bash
 # Stop the host: preview_stop <serverId> (Option A) or:
@@ -447,15 +524,13 @@ lsof -ti :8089 | xargs kill 2>/dev/null
 rm -rf /tmp/nodel-smoke-host
 rm -f .claude/launch.json && rmdir .claude 2>/dev/null   # if §2 Option A created it
 
-# Stray root-level gradle dirs (problems-report etc.) left by --tests runs.
-# ⚠️ Do NOT `rm -rf build` on the v3 line: build/compat-smoke/** is TRACKED content
-# (the wire-compatibility baseline from scripts/compat-smoke.sh). Remove only untracked strays:
-git status --short build | grep '^??' | awk '{print $2}' | xargs rm -rf 2>/dev/null
-git status --short build   # must come back empty (no deletions!)
+# The root build/ directory is gitignored on this line (scroix/nodel#35), so gradle strays
+# under it (problems-report etc.) no longer dirty the tree. build/compat-smoke/ and
+# build/polyglot-smoke/ are just the smoke scripts' work dirs — safe to delete; removing
+# build/compat-smoke/ only costs a stock-jar re-download on the next wire-compat run.
 
 git status --short
-# Expected: nothing beyond changes you intended (a clean playbook run leaves the tree untouched;
-# authoring this playbook leaves only SMOKETEST.md and recipes/smoketest/)
+# Expected: nothing beyond changes you intended (a clean playbook run leaves the tree untouched)
 ```
 
 ---
@@ -467,6 +542,15 @@ them).
 
 - *(2.x baseline: no product bugs found — authored 2026-07-04 against v2.2.1 rev550; the v3
   replay below was run 2026-07-04 against v3.0.0 rev624, 138/138 committed tests passing)*
+- **OPEN — boot-time save/maintenance race wedges a node (v3):** a config save (e.g.
+  `/remote/save`) issued within ~1s of a node first answering REST — while the host's initial
+  maintenance pass is still constructing sibling nodes — cancels a GraalPy context mid-init,
+  leaks the node's event-name registration, and the host then retries a duplicate node for the
+  same folder every ~10s, failing forever with `Already bound - <node>.<event>` (subsequent
+  saves on the live node return 500). Reproduced 100% on clean v3 (rev628); found while
+  authoring §6 (scroix/nodel#34), though it is language-independent — the trigger is save
+  timing, not GraalJS. The playbook avoids the window naturally (§5's save happens minutes
+  after boot). Do not save node config in the first seconds after host start.
 - **FIXED in scroix/nodel#37 — stale version constant (v3):** a 3.0.0 host reported
   `"nodelVersion":"2.2.1"` on `/REST/nodes`; `Nodel.getVersion()` now resolves from the
   build manifest (same source as the banner), so the field carries the full
@@ -509,7 +593,7 @@ them).
 | 404 `EndpointNotFoundException` right after a rename | The node reloads and re-registers under the new name; poll `$BASE/REST/nodes` until it lists the new name, then continue. |
 | `remote/save` seems to "lose" console history | Saving remote bindings restarts the node's script (console shows the `Python node destroyed.` → `Initialising Python node...` reload cycle); history is retained above the reload marker. |
 | Gradle tests fail with port conflicts | The suite owns 18085 and kills whatever holds it. Keep the manual smoke host on 8089. |
-| Browser clicks "succeed" but nothing happens | See §6 traps: resize the viewport (0×0 default) and use JS `element.click()` instead of coordinate clicks. |
+| Browser clicks "succeed" but nothing happens | See §7 traps: resize the viewport (0×0 default) and use JS `element.click()` instead of coordinate clicks. |
 | Clicking a node link on the list page doesn't navigate | nodel.js runs periodic redirect/reload polls that can interrupt an in-flight navigation (see `TestBase.recreatePage` rationale). Navigate directly to `/nodes/<ReducedName>/` — reduced name strips spaces/hyphens/underscores/dots. |
 | `/REST/recipes/list` missing official recipes | The recipes-sync node needs network to clone `nodel-official-recipes`; local recipes copied into the host's `recipes/` dir still list fine. |
 | POST endpoints return parse errors | Send an explicit empty JSON body: `-H "Content-Type: application/json" -d '{}'`. |
@@ -527,6 +611,7 @@ Minimum viable smoke coverage achieved when:
 - [ ] `sendPing` action call returns `true`; console, `/events/Ping` last-value, and `/activity` all show the marker
 - [ ] Node restart, recipe-based `newNode`, rename, and `remove?confirm=true` all succeed (with re-registration polling)
 - [ ] Binding saved via `/remote/save`, `Wired` handshake in activity, and a ping marker propagates producer → consumer console/activity
+- [ ] GraalJS node (`script.js`) boots with JavaScript console markers, its actions/events/params (metadata intact) appear over REST, and its structured event propagates into the Python consumer over a cross-language binding
 - [ ] ⚠️ **Browser-driven**: node list renders; node page shows live console; action invoked from the UI reaches both nodes; add-node UI creates a running node (v3 default stub)
 - [ ] Multicast section run **or** its blocker proven (logs checked, cause recorded)
 - [ ] Cleanup leaves no host process, no `/tmp/nodel-smoke-host`, and a clean `git status`
@@ -536,4 +621,6 @@ Minimum viable smoke coverage achieved when:
 *Authored 2026-07-04 against the 2.x line (v2.2.1 rev550); ported to and fully re-executed
 against the v3 line (Nodel 3.0.0 on GraalVM, rev624) on 2026-07-04 — every command above was
 run and its output verified on v3 during the port. Expectations that depend on the
-scroix/nodel#37 fixes were re-verified against a host built with those fixes applied.*
+scroix/nodel#37 fixes were re-verified against a host built with those fixes applied. The
+GraalJS section (§6) arrived with scroix/nodel#34 and was executed the same way — every
+command run against a live host built from that branch.*

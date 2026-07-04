@@ -93,7 +93,7 @@ graph TD
         action/event round-trips pass in BOTH directions.
 
 *   [x] **Demo Python 3 recipes** (Jul 2026)
-    *   `examples/python3/` — TCP device node and timer/scheduler node with
+    *   `recipes/python3/` — TCP device node and timer/scheduler node with
         actions, events and parameters, REST-verified.
 
 *   [x] **GraalJS node support — polyglot showcase** (Jul 2026, goal 2)
@@ -126,9 +126,9 @@ graph TD
         Plus `JsNodeTest` (JUnit, runs in CI's integrationTest job) covering
         dispatch, binding discovery, action invocation, lifecycle hooks and
         mixed-language hosting.
-    *   **Docs**: `examples/javascript/README.md` — "writing a JavaScript
+    *   **Docs**: `recipes/javascript/README.md` — "writing a JavaScript
         node" guide with a side-by-side Python/JS surface table; demo recipe
-        under `examples/javascript/greeter/`.
+        under `recipes/javascript/greeter/`.
     *   **Drive-by fixes** (both languages): REST-invoked declarative actions
         no longer log an NPE (`handleActionRequest` now tolerates the absent
         completion callback); `nodetoolkit.py`'s `same_value` and `lookup_*`
@@ -257,9 +257,9 @@ Verified by `GraalPyJsonRoundTripTest`.
 
 ---
 
-Working demo recipes live in `examples/python3/` (TCP device + scheduler) and
-`examples/javascript/` (greeter). For **JavaScript** nodes (`script.js` under
-GraalJS) see the dedicated guide — `examples/javascript/README.md` — which
+Working demo recipes live in `recipes/python3/` (TCP device + scheduler) and
+`recipes/javascript/` (greeter). For **JavaScript** nodes (`script.js` under
+GraalJS) see the dedicated guide — `recipes/javascript/README.md` — which
 maps every Python convention below to its JS counterpart.
 
 **Python 3 language differences** (vs the Jython 2.5 host)

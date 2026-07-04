@@ -95,6 +95,13 @@ public class JsNodeTest {
             assertTrue(node.getLocalEvents().containsKey(new SimpleName("Status")),
                     "declarative local event discovered");
 
+            // the JS metadata object (member-based, unlike Python's hash-entry
+            // dicts) survives the extractor: the event's schema made it through
+            java.util.Map<String, Object> schema =
+                    node.getLocalEvents().get(new SimpleName("Status")).getArgSchema();
+            assertNotNull(schema, "JS metadata schema extracted");
+            assertEquals("string", schema.get("type"), "JS metadata schema content intact");
+
             // lifecycle hooks ran in order around main()
             Object lifecycle = node.eval("lifecycle.join(',')", "test");
             assertEquals("before,main,after", lifecycle);
