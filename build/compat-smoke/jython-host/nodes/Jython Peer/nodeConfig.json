@@ -1,7 +1,0 @@
-{
-    "remoteBindingValues": {
-        "actions": {"RemotePoke": {"node": "Graal Peer", "action": "Poke"}},
-        "events": {"PeerPing": {"node": "Graal Peer", "event": "Ping"}}
-    },
-    "paramValues": {}
-}

@@ -50,3 +50,6 @@ out/
 # Gradle build files
 **/build/reports/problems/
 **/.DS_Store
+
+# root-project build output (smoke-test work dirs, etc.)
+/build
