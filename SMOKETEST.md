@@ -565,10 +565,10 @@ them).
   `group`/`schema`, and the web UI's grouping and forms degraded with them.
 - **Example recipe no longer provisioned (v3):** a blank node gets a one-line
   `Hello from Python` stub written by `PyNode.init()`; `ExampleScript.java` /
-  `example_script.py` (the 2.x "Recipe has started!" example) are now dead code. Restoring
-  it needs toolkit parity first: `date_now()` and `next_seq()` (used by the example and by
-  many real recipes) are missing from the v3 toolkit — any script referencing them fails
-  to load with a `NameError`.
+  `example_script.py` (the 2.x "Recipe has started!" example) are now dead code. The
+  toolkit globals the example depends on (`date_now()`, `next_seq()`) were restored in
+  scroix/nodel#36, so this is now just a matter of rewiring `ExampleScript` into
+  `PyNode`'s default-script path.
 - **Minor test-infra leak:** on Unix the gradle `startNodelhost` task keeps the host's stdin
   open via a `bash -c "tail -f /dev/null | java ..."` wrapper, and `stopNodelhost` doesn't
   reap all of it. Observed 2026-07-04: a completed `./gradlew build` orphans the
