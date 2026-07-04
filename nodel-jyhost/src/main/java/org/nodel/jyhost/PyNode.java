@@ -169,9 +169,21 @@ public class PyNode extends BaseDynamicNode {
 
         @Override
         public void handle(String context, Exception th) {
-            String message = "(" + context + ") " + th.toString();
-            _logger.info(message);
-            _errReader.inject(message);
+            // unwrap to find a guest (Python) exception for a proper traceback
+            Throwable cause = th;
+            while (cause != null && !(cause instanceof PolyglotException))
+                cause = cause.getCause();
+
+            if (cause instanceof PolyglotException && ((PolyglotException) cause).isGuestException()) {
+                _logger.info("(" + context + ") " + cause.toString());
+                _errReader.inject("(" + context + ")");
+                for (String line : renderPythonTraceback((PolyglotException) cause).split("\n"))
+                    _errReader.inject(line);
+            } else {
+                String message = "(" + context + ") " + th.toString();
+                _logger.info(message);
+                _errReader.inject(message);
+            }
         }
 
     };
@@ -360,10 +372,25 @@ public class PyNode extends BaseDynamicNode {
             // Load and execute the toolkit bootstrap script BEFORE any user script
             loadToolkit();
 
-            // Now run the user script (script.py)
-            if (_scriptFile.exists()) {
-                executeFileScript(_scriptFile);
+            // record the hash up-front so a broken script isn't re-run until one
+            // of the files actually changes (hot reload)
+            _fileModifiedHash = calculateFileModifiedHash();
 
+            // Now run the user script (script.py)
+            boolean scriptLoaded = false;
+            if (_scriptFile.exists()) {
+                try {
+                    executeFileScript(_scriptFile);
+                    scriptLoaded = true;
+                } catch (PolyglotException e) {
+                    // the Python-style traceback has already been surfaced in the
+                    // console; keep the node alive in an error state so the console
+                    // stays inspectable and a script fix hot-reloads (Jython parity)
+                    markFailed(e);
+                }
+            }
+
+            if (scriptLoaded) {
                 // Extract bindings from Python
                 List<String> warnings = new ArrayList<>();
                 org.graalvm.polyglot.Value pythonGlobals = _pythonContext.getBindings(PYTHON_LANGUAGE_ID);
@@ -414,9 +441,6 @@ public class PyNode extends BaseDynamicNode {
                 } finally {
                     try { _pythonContext.leave(); } catch(Exception e) { /* ignore */ }
                 }
-
-                // Store file modification hash for reload detection
-                _fileModifiedHash = calculateFileModifiedHash();
 
             }
 
@@ -535,11 +559,14 @@ public class PyNode extends BaseDynamicNode {
 
             // Use standard Context.newBuilder instead of GraalPyResources.contextBuilder
             _pythonContext = Context.newBuilder("python")
-                .allowHostAccess(HostAccess.ALL) 
-                .allowHostClassLookup(name -> true) 
-                .hostClassLoader(hostCl) 
+                .allowHostAccess(HostAccess.ALL)
+                .allowHostClassLookup(name -> true)
+                .hostClassLoader(hostCl)
                 .out(stdoutStream)
                 .err(stderrStream)
+                // without the Graal compiler the fallback runtime warns on every
+                // context; don't spam each node's console with it
+                .option("engine.WarnInterpreterOnly", "false")
                 .build();
             return _pythonContext;
         } catch (Exception e) {
@@ -631,17 +658,81 @@ public class PyNode extends BaseDynamicNode {
      */
     private void handlePolyglotException(String context, PolyglotException e) {
         _logger.error(String.format("Error %s: %s", context, e.getMessage()));
+
         if (e.isGuestException()) {
-            StringBuilder stackTrace = new StringBuilder();
-            stackTrace.append("\n--- Python stack trace (guest) ---\n");
-            for (PolyglotException.StackFrame frame : e.getPolyglotStackTrace()) {
-                stackTrace.append("  at ").append(frame.toString()).append("\n");
-            }
-            stackTrace.append("--- End Python stack trace ---");
-            _logger.error(stackTrace.toString());
-            _outReader.inject(stackTrace.toString());
+            // surface a Python-style traceback in the console's error stream
+            // (parity with the Jython host)
+            for (String line : renderPythonTraceback(e).split("\n"))
+                _errReader.inject(line);
+        } else {
+            _errReader.inject("(" + context + ") " + e.toString());
         }
+
         _logger.error("PolyglotException during '{}'", context, e);
+    }
+
+    /**
+     * Renders a guest exception using Python's own 'traceback' module (full
+     * CPython fidelity, including source lines), falling back to a synthesised
+     * traceback when the guest object or context isn't usable.
+     */
+    private String renderPythonTraceback(PolyglotException e) {
+        try {
+            org.graalvm.polyglot.Value guestObject = e.getGuestObject();
+            Context context = _pythonContext;
+            if (guestObject != null && context != null) {
+                org.graalvm.polyglot.Value formatter = context.eval(PYTHON_LANGUAGE_ID,
+                        "(lambda ex: ''.join(__import__('traceback').format_exception(ex)))");
+                String formatted = formatter.execute(guestObject).asString();
+                if (!Strings.isBlank(formatted))
+                    return formatted.trim();
+            }
+        } catch (Exception e2) {
+            // fall through to the synthesised form
+        }
+        return formatPythonTraceback(e);
+    }
+
+    /**
+     * Formats a guest (Python) exception the way CPython would print it, so the
+     * web console output is comparable to the Jython host's.
+     */
+    static String formatPythonTraceback(PolyglotException e) {
+        StringBuilder sb = new StringBuilder();
+
+        if (e.isSyntaxError()) {
+            // GraalPy syntax errors carry the file/line detail in the message,
+            // e.g. "SyntaxError: invalid syntax (script.py, line 3)"
+            org.graalvm.polyglot.SourceSection loc = e.getSourceLocation();
+            if (loc != null && loc.getSource() != null)
+                sb.append("  File \"").append(loc.getSource().getName())
+                  .append("\", line ").append(loc.getStartLine()).append("\n");
+            sb.append(e.getMessage());
+            return sb.toString();
+        }
+
+        // collect guest frames; polyglot stack traces are innermost-first but
+        // Python prints outermost-first
+        List<PolyglotException.StackFrame> guestFrames = new ArrayList<>();
+        for (PolyglotException.StackFrame frame : e.getPolyglotStackTrace()) {
+            if (frame.isGuestFrame())
+                guestFrames.add(frame);
+        }
+
+        sb.append("Traceback (most recent call last):");
+        for (int i = guestFrames.size() - 1; i >= 0; i--) {
+            PolyglotException.StackFrame frame = guestFrames.get(i);
+            org.graalvm.polyglot.SourceSection ss = frame.getSourceLocation();
+            String file = (ss != null && ss.getSource() != null) ? ss.getSource().getName() : "<unknown>";
+            int line = ss != null ? ss.getStartLine() : -1;
+            sb.append("\n  File \"").append(file).append("\", line ").append(line)
+              .append(", in ").append(frame.getRootName());
+        }
+
+        // GraalPy messages are already in "ExceptionType: detail" form
+        sb.append("\n").append(e.getMessage());
+
+        return sb.toString();
     }
 
     /**
@@ -833,10 +924,15 @@ public class PyNode extends BaseDynamicNode {
                     } else {
                         pyFunc.execute();
                     }
-                    handler.handleActionRequest(null); 
+                    handler.handleActionRequest(null);
+                } catch (PolyglotException e) {
+                    handlePolyglotException("action '" + actionName + "'", e);
+                    handler.handleActionRequest(new RuntimeException(
+                            "Error executing action '" + actionName + "': " + e.getMessage(), e));
                 } catch (Exception e) {
                     String errMsg = "Error executing action '" + actionName + "': " + e.getMessage();
                     _logger.error(errMsg);
+                    _errReader.inject(errMsg);
                     handler.handleActionRequest(new RuntimeException(errMsg, e));
                 } finally {
                     try { _pythonContext.leave(); } catch (Exception le) { /* ignore */ }
@@ -889,6 +985,8 @@ public class PyNode extends BaseDynamicNode {
                     } else {
                         pyFunc.execute();
                     }
+                } catch (PolyglotException e) {
+                    handlePolyglotException("event handler '" + functionName + "'", e);
                 } catch (Exception e) {
                     String errMsg = "Error handling event using '" + functionName + "': " + e.getMessage();
                     _logger.error(errMsg);

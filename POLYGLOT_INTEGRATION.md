@@ -115,7 +115,16 @@ _(Deferred as lower priority; not critical path for initial functionality)_
 
 ### 4.7 Error surfacing
 
-*   [ ] Map `PolyglotException` into structured JSON for web UI (parity with Jython).
+*   [x] Map `PolyglotException` into structured JSON for web UI (parity with Jython).
+
+**Implementation**: guest exceptions are rendered with Python's own `traceback`
+module (via the guest exception object), so the web console's `err` stream shows
+a genuine CPython-style traceback — file, line, function, source caret for syntax
+errors — as structured console-log JSON items. A synthesised formatter
+(`PyNode.formatPythonTraceback`) is the fallback when the guest object isn't
+usable. A broken script no longer kills node creation: the node stays alive in an
+error state (console inspectable, hot reload picks up the fix), matching Jython
+behaviour.
 
 ### 4.8 Parameter serialisation check
 
