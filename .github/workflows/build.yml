@@ -2,9 +2,9 @@ name: Build and Test
 
 on:
   push:
-    branches: [main, dev, master, migrate-to-graalvm]
+    branches: [main, dev, master, v3]
   pull_request:
-    branches: [main, dev, master]
+    branches: [main, dev, master, v3]
 
 permissions:
   checks: write

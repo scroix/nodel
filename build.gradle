@@ -73,7 +73,7 @@ ext {
         branch = branch.substring(branch.indexOf('/') + 1)
     }
 
-    baseVersion = '2.2.1'
+    baseVersion = '3.0.0'
     versionIdentifier = "${baseVersion}-${branch}_r${rev}"
     println "versionIdentifier: ${versionIdentifier}"
 }

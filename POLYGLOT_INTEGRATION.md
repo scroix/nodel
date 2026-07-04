@@ -247,4 +247,4 @@ Working demo recipes live in `examples/python3/` (TCP device + scheduler).
 
 ---
 
-This migration builds on the original Nodel architecture by Museum Victoria, enriched by the GraalVM community and contributors to this branch. Everyone is welcome to file issues and PRs against the **migrate-to-graalvm** branch while the work is stabilising.
+This migration builds on the original Nodel architecture by Museum Victoria, enriched by the GraalVM community and contributors to this branch. Everyone is welcome to file issues and PRs against the **v3** branch — the long-lived GraalVM (Nodel 3.x) line developed alongside regular Nodel (`dev`, 2.2.x).
