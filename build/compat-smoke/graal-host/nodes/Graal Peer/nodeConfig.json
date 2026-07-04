@@ -1,7 +1,0 @@
-{
-    "remoteBindingValues": {
-        "actions": {"RemotePoke": {"node": "Jython Peer", "action": "Poke"}},
-        "events": {"PeerPing": {"node": "Jython Peer", "event": "Ping"}}
-    },
-    "paramValues": {}
-}
