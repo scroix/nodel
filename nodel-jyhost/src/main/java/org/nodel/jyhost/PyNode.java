@@ -152,11 +152,6 @@ public class PyNode extends BaseDynamicNode {
     private Context _pythonContext;
 
     /**
-     * When permanently closed (disposed).
-     */
-    private boolean _closed;
-
-    /**
      * The main Python script file.
      */
     private File _scriptFile;
@@ -269,6 +264,12 @@ public class PyNode extends BaseDynamicNode {
     private final Object _reloadLock = new Object();
 
     /**
+     * Set once the first init() has completed successfully; reload cycles are
+     * meaningless (and dangerous) before then.
+     */
+    private volatile boolean _initialised;
+
+    /**
      * The toolkit bootstrap sources, read from the classpath once per JVM
      * (every node context evaluates the same immutable resource).
      */
@@ -279,18 +280,26 @@ public class PyNode extends BaseDynamicNode {
         _nodelHost = nodelHost;
         _configFile = new File(root, "nodeConfig.json");
 
-        createContext();
-        try {
-            init();
-        } catch (Exception e) {
-            // this instance is about to be abandoned by the host — release anything
-            // the failed init managed to register so a later retry starts clean
-            try { teardown(); } catch (Exception e2) { /* best effort */ }
+        // the super() call above already made this node REST-visible (by name), so a
+        // config save can arrive while init() is still running; holding the reload
+        // lock here keeps its reload() from cancelling the context mid-init
+        synchronized (_reloadLock) {
+            createContext();
+            try {
+                init();
+            } catch (Exception e) {
+                // this instance is about to be abandoned by the host — release anything
+                // the failed init managed to register (including its REST visibility)
+                // so a later retry starts clean
+                try { close(); } catch (Exception e2) { /* best effort */ }
 
-            if (e instanceof IOException) {
-                throw (IOException) e;
+                if (e instanceof IOException) {
+                    throw (IOException) e;
+                }
+                throw new IOException("Failed to initialize " + _language.displayName + " node", e);
             }
-            throw new IOException("Failed to initialize " + _language.displayName + " node", e);
+
+            _initialised = true;
         }
 
         // watch for script / config file changes (hot reload)
@@ -929,7 +938,7 @@ public class PyNode extends BaseDynamicNode {
     }
 
     protected void checkReload() {
-        if (_closed)
+        if (_closed || !_initialised)
             return;
 
         // consider every language's script file so a node can be converted
@@ -956,7 +965,10 @@ public class PyNode extends BaseDynamicNode {
      */
     private void reload() throws Exception {
         synchronized (_reloadLock) {
-            if (_closed)
+            // '!_initialised' covers a reload racing first-time construction: the
+            // constructor's init() is yet to run and will pick up any config
+            // changes from disk itself
+            if (_closed || !_initialised)
                 return;
 
             teardown();
@@ -1632,11 +1644,15 @@ public class PyNode extends BaseDynamicNode {
         if (config == null)
             return;
 
-        _config = config;
+        // under the reload lock so the file write never interleaves with a
+        // concurrent init()'s loadConfig()
+        synchronized (_reloadLock) {
+            _config = config;
 
-        Stream.writeFully(_configFile, Serialisation.serialise(config, 4));
+            Stream.writeFully(_configFile, Serialisation.serialise(config, 4));
 
-        reload();
+            reload();
+        }
     }
 
     public class Params {
