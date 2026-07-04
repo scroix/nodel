@@ -434,6 +434,10 @@ public class PyNode extends BaseDynamicNode {
                     if (afterMainFunc != null && afterMainFunc.canExecute()) {
                         afterMainFunc.execute();
                     }
+
+                    // nothing went wrong — kick off the toolkit (starts managed
+                    // TCP/UDP/process connections, etc.)
+                    _toolkit.enable();
                 } catch (PolyglotException e) {
                     handlePolyglotException("Executing lifecycle functions", e);
                 } catch (Exception e) {
