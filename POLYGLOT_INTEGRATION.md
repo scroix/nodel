@@ -65,9 +65,36 @@ graph TD
     *   Console shim keeps `console.instance` pattern alive.
     *   Timer, TCP, UDP, call/call_safe, decorator helpers ported.
 
-*   [x] **Build & runtime**
-    *   Gradle 8.13, Java 21, GraalVM Native Image plugin compile.
+*   [x] **Build & runtime** (Jul 2026)
+    *   Gradle 8.14.5, Java 21 via auto-provisioned Gradle toolchain (foojay
+        resolver) — a clean checkout builds with no machine-specific setup and
+        no local JDK 21. The shadow jar carries an `Add-Opens` manifest so
+        `java -jar nodelhost.jar` runs flagless on Java 21+.
     *   Node starts, runs recipes, REPL (`exec`, `eval`) functional.
+    *   Rebased onto `dev` (Playwright integration/e2e suite, LocalAutoDNS test
+        discovery, dependency bumps); full `./gradlew build` green.
+
+*   [x] **Node management & config parity** (Jul 2026)
+    *   Restored the REST services the interpreter swap had dropped: `params`,
+        `remote`, `restart`, `rename`, `update`, `remove`, `files`.
+    *   `nodeConfig.json` is loaded on init and saved via the services; saved
+        remote-binding values and parameter values inject into the extracted
+        bindings; `param_X` globals receive their saved values before `main()`.
+    *   Live host objects are exposed back into Python globals (`local_event_X`,
+        `remote_action_X`) so `.emit(...)` / `.call(...)` work like Jython.
+    *   Hot reload actually monitors the script/config files; failed script
+        loads keep the node alive in an inspectable error state.
+    *   The toolkit is enabled after `main()` (managed TCP/UDP now connect).
+
+*   [x] **Wire compatibility proven** (Jul 2026)
+    *   `scripts/compat-smoke.sh`: stock release `nodelhost` (Jython,
+        v2.2.1.542) and the GraalVM host side-by-side with real multicast
+        discovery + Nodel TCP binding — mutual discovery and remote
+        action/event round-trips pass in BOTH directions.
+
+*   [x] **Demo Python 3 recipes** (Jul 2026)
+    *   `examples/python3/` — TCP device node and timer/scheduler node with
+        actions, events and parameters, REST-verified.
 
 ---
 
@@ -77,7 +104,9 @@ graph TD
 
 ### 4.1 HostAccess hardening
 
-_(Deferred as lower priority; not critical path for initial functionality)_
+_(Deliberately out of scope for landing the migration: the GraalPy host keeps
+the same trust model as the Jython host today — recipes are fully trusted code.
+`allowAllAccess`/`HostAccess.ALL` stays until a dedicated hardening pass.)_
 
 *   [ ] Switch `allowAllAccess(true)` -> `HostAccess.EXPLICIT`.
 *   [ ] Annotate `ManagedToolkit` and other exposed classes with `@HostAccess.Export`.
@@ -141,7 +170,10 @@ Verified by `GraalPyJsonRoundTripTest`.
 
 ### 4.9 Documentation & tooling
 
-*   [ ] Update BUILDING.md with `GRAALVM_HOME`, native-image flags, recipe migration guide.
+*   [x] BUILDING.md updated: JDK 21 + auto-provisioned toolchain (no
+    `GRAALVM_HOME` needed — stock OpenJDK works), testing and wire-compat
+    smoke instructions.
+*   [x] Recipe-authoring notes for Python 3 differences (see §6).
 *   [ ] Provide a "compatibility matrix" (feature / Jython / GraalPy).
 
 ---
@@ -171,15 +203,43 @@ Verified by `GraalPyJsonRoundTripTest`.
 
 ---
 
-*   Use `from polyglot import import_value` to reach Java types, e.g.
-    `Git = import_value("java.type:org.eclipse.jgit.api.Git")` (subject to final import policy).
+Working demo recipes live in `examples/python3/` (TCP device + scheduler).
 
-*   All timers & network helpers are now classes/functions in `nodetoolkit` – import them directly:
+**Python 3 language differences** (vs the Jython 2.5 host)
+
+*   `print('x')` is a function — `print 'x'` is a syntax error.
+*   f-strings are available and preferred: `print(f'level: {level}')`.
+*   `dict.items()` / `.keys()` / `.values()` replace `iteritems()` etc.
+*   Integer division is `//`; `/` always yields a float.
+*   Exceptions: `except Exception as e:` (not `except Exception, e:`).
+*   `unicode`/`basestring` are gone — everything is `str`.
+
+**Toolkit / binding conventions** (unchanged from Jython)
+
+*   Declarative bindings still work the same way: `param_X = Parameter({...})`,
+    `local_event_X = LocalEvent({...})`, `remote_action_X = RemoteAction({...})`,
+    `def remote_event_X(arg): ...`, and the `@local_action({...})` decorator.
+    After startup the placeholders are replaced with live objects, so
+    `local_event_X.emit(arg)` and `remote_action_X.call(arg)` behave as before.
+*   Timers and network helpers are injected into the script's namespace by the
+    toolkit (no import needed): `Timer`, `TCP`, `UDP`, `call`, `call_safe`,
+    `json_encode`, `json_decode`, lifecycle decorators (`@before_main`,
+    `@after_main`, `@at_cleanup`).
+
+**Java interop**
+
+*   Import Java types with the GraalPy interop API:
     ```python
-    from nodetoolkit import Timer, TCP, local_action
+    import java
+    Git = java.type('org.eclipse.jgit.api.Git')
     ```
+    Plain `import org.eclipse.jgit...` also works via the toolkit's import hook.
 
-*   Python 3 only – ensure `print()` functions, `items()` instead of `iteritems()`, integer division (`//`) where appropriate.
+**Error reporting**
+
+*   Script and handler errors surface in the node's web console as genuine
+    Python tracebacks (file, line, function) on the error stream — same place
+    as the Jython host.
 
 ---
 

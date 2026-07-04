@@ -1,0 +1,12 @@
+Nodel [GraalPython] v2.2.1-migrate-to-graalvm_r610 is running.
+
+Press Enter to initiate a shutdown.
+
+DEBUG  Loader used by PyNode: jdk.internal.loader.ClassLoaders$AppClassLoader@2c854dc5
+DEBUG  Can load NodelHost from that loader: YES
+    (web interface available at http://192.168.25.73:8196)
+
+    (web interface available at http://169.254.187.125:8196)
+
+    (web interface available at http://100.97.190.37:8196)
+
