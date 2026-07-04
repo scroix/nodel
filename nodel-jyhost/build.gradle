@@ -80,6 +80,9 @@ dependencies {
     implementation "org.graalvm.python:python:${polyglotVersion}"
     implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"
 
+    // GraalJS — enables 'script.js' nodes alongside 'script.py' (community artifacts)
+    implementation "org.graalvm.js:js:${polyglotVersion}"
+
     // Playwright e2e testing
     testImplementation 'com.microsoft.playwright:playwright:1.52.0'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.12.2'

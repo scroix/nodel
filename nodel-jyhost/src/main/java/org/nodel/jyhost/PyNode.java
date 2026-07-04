@@ -61,10 +61,14 @@ import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
 
 /**
- * Represents a Python-enabled Node under GraalVM (replacing Jython).
+ * Represents a script-enabled Node under GraalVM (replacing Jython).
+ * <p>
+ * The node's language is selected by the script file present in its folder —
+ * 'script.py' boots a GraalPy context, 'script.js' boots a GraalJS one. All
+ * host/guest interaction goes through the language-neutral polyglot Value API.
  * <p>
  * Thread safety is ensured through GraalVM's built-in Context synchronization mechanisms.
- * Each method that interacts with the Python context uses the enter/leave pattern provided by
+ * Each method that interacts with the guest context uses the enter/leave pattern provided by
  * GraalVM to ensure proper thread attachment and operation serialization.
  * <p>
  * This class previously used a _busy lock, but that was found to be redundant with GraalVM's
@@ -80,10 +84,26 @@ public class PyNode extends BaseDynamicNode {
     private static final String PYTHON_LANGUAGE_ID = "python";
 
     /**
-     * The shared GraalVM Python context.
+     * Language ID for GraalVM JavaScript (GraalJS).
+     */
+    private static final String JS_LANGUAGE_ID = "js";
+
+    /**
+     * The GraalVM language ID this node runs ("python" or "js"); selected per
+     * script file in createContext().
+     */
+    private String _languageId = PYTHON_LANGUAGE_ID;
+
+    /**
+     * Human-friendly language name for console/log messages.
+     */
+    private String _languageName = "Python";
+
+    /**
+     * The shared GraalVM guest context (Python or JavaScript).
      * <p>
      * This context is thread-safe by GraalVM design, which automatically serializes access
-     * to the Python environment without requiring additional locks.
+     * to the guest environment without requiring additional locks.
      */
     private Context _pythonContext;
 
@@ -177,7 +197,7 @@ public class PyNode extends BaseDynamicNode {
             if (cause instanceof PolyglotException && ((PolyglotException) cause).isGuestException()) {
                 _logger.info("(" + context + ") " + cause.toString());
                 _errReader.inject("(" + context + ")");
-                for (String line : renderPythonTraceback((PolyglotException) cause).split("\n"))
+                for (String line : renderGuestTraceback((PolyglotException) cause).split("\n"))
                     _errReader.inject(line);
             } else {
                 String message = "(" + context + ") " + th.toString();
@@ -194,7 +214,9 @@ public class PyNode extends BaseDynamicNode {
      */
     private File _configFile;
 
-    private static final String TOOLKIT_RESOURCE = "/org/nodel/jyhost/nodetoolkit.py";
+    private static final String PY_TOOLKIT_RESOURCE = "/org/nodel/jyhost/nodetoolkit.py";
+
+    private static final String JS_TOOLKIT_RESOURCE = "/org/nodel/jyhost/nodetoolkit.js";
 
     /**
      * How often the script / config files are checked for changes (hot reload).
@@ -222,7 +244,7 @@ public class PyNode extends BaseDynamicNode {
             if (e instanceof IOException) {
                 throw (IOException) e;
             }
-            throw new IOException("Failed to initialize Python node", e);
+            throw new IOException("Failed to initialize " + _languageName + " node", e);
         }
 
         // watch for script / config file changes (hot reload)
@@ -289,7 +311,7 @@ public class PyNode extends BaseDynamicNode {
                 @Override
                 public boolean accept(File f) {
                     String lc = f.getName().toLowerCase();
-                    return lc.startsWith(scriptFilePrefix) && lc.endsWith(".py");
+                    return lc.startsWith(scriptFilePrefix) && (lc.endsWith(".py") || lc.endsWith(".js"));
                 }
             });
             if (backups != null && backups.length > 0) {
@@ -306,7 +328,8 @@ public class PyNode extends BaseDynamicNode {
 
             // make a backup
             String timestamp = DateTime.now().toString("YYYY-MM-dd_HHmmssSSS");
-            Files.copy(_scriptFile, new File(_root, scriptFilePrefix + timestamp + ".py"));
+            String scriptExt = _scriptFile.getName().substring(_scriptFile.getName().lastIndexOf('.'));
+            Files.copy(_scriptFile, new File(_root, scriptFilePrefix + timestamp + scriptExt));
 
             // write new content
             Stream.writeFully(_scriptFile, script);
@@ -323,12 +346,11 @@ public class PyNode extends BaseDynamicNode {
         // Called by BaseDynamicNode when first needed or after reload
         if (_closed) return; 
 
-        _outReader.inject("Initialising Python node...");
-        _logger.info("Initialising Python node...");
+        _outReader.inject("Initialising " + _languageName + " node...");
+        _logger.info("Initialising " + _languageName + " node...");
 
-        // Locate script file
-        _scriptFile = new File(_root, "script.py");
-        if (!_scriptFile.exists()) {
+        // the script file (and language) were detected in createContext()
+        if (!_scriptFile.exists() && PYTHON_LANGUAGE_ID.equals(_languageId)) {
             // Create default script file if it doesn't exist
             Stream.writeFully(_scriptFile, "# Default Python script\n\ndef main():\n    print('Hello from Python')\n");
         }
@@ -367,7 +389,7 @@ public class PyNode extends BaseDynamicNode {
                 
             // Inject the toolkit into the Python context
             _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
-            _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
+            _pythonContext.getBindings(_languageId).putMember("_toolkit", _toolkit);
 
             // Load and execute the toolkit bootstrap script BEFORE any user script
             loadToolkit();
@@ -376,7 +398,7 @@ public class PyNode extends BaseDynamicNode {
             // of the files actually changes (hot reload)
             _fileModifiedHash = calculateFileModifiedHash();
 
-            // Now run the user script (script.py)
+            // Now run the user script (script.py or script.js)
             boolean scriptLoaded = false;
             if (_scriptFile.exists()) {
                 try {
@@ -393,7 +415,7 @@ public class PyNode extends BaseDynamicNode {
             if (scriptLoaded) {
                 // Extract bindings from Python
                 List<String> warnings = new ArrayList<>();
-                org.graalvm.polyglot.Value pythonGlobals = _pythonContext.getBindings(PYTHON_LANGUAGE_ID);
+                org.graalvm.polyglot.Value pythonGlobals = _pythonContext.getBindings(_languageId);
                 Bindings bindings = BindingsExtractor.extract(pythonGlobals, warnings);
 
                 // overlay the saved remote-binding and parameter values (nodeConfig.json)
@@ -413,14 +435,14 @@ public class PyNode extends BaseDynamicNode {
                 try {
                     // Execute any before_main hooks
                     _logger.info("Running before_main functions...");
-                    org.graalvm.polyglot.Value beforeMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_before_main_functions");
+                    org.graalvm.polyglot.Value beforeMainFunc = _pythonContext.getBindings(_languageId).getMember("process_before_main_functions");
                     if (beforeMainFunc != null && beforeMainFunc.canExecute()) {
                         beforeMainFunc.execute();
                     }
                     
                     // Execute main() if it exists
                     _logger.info("Looking for main() function...");
-                    org.graalvm.polyglot.Value mainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("main");
+                    org.graalvm.polyglot.Value mainFunc = _pythonContext.getBindings(_languageId).getMember("main");
                     if (mainFunc != null && mainFunc.canExecute()) {
                         _logger.info("Executing main() function...");
                         mainFunc.execute();
@@ -430,7 +452,7 @@ public class PyNode extends BaseDynamicNode {
                     
                     // Execute any after_main hooks
                     _logger.info("Running after_main functions...");
-                    org.graalvm.polyglot.Value afterMainFunc = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember("process_after_main_functions");
+                    org.graalvm.polyglot.Value afterMainFunc = _pythonContext.getBindings(_languageId).getMember("process_after_main_functions");
                     if (afterMainFunc != null && afterMainFunc.canExecute()) {
                         afterMainFunc.execute();
                     }
@@ -448,19 +470,19 @@ public class PyNode extends BaseDynamicNode {
 
             }
 
-            _logger.info("Python node initialised.");
-            _outReader.inject("Python node initialised.");
+            _logger.info(_languageName + " node initialised.");
+            _outReader.inject(_languageName + " node initialised.");
             
             // Mark as successfully initialized by setting the description
             synchronized (_signal) {
                 _started = DateTime.now();
-                _desc = "GraalVM Python Node";
+                _desc = "GraalVM " + _languageName + " Node";
                 _signal.notifyAll();
             }
             
         } catch (Exception e) {
-            _logger.error("Failed to initialise Python node: " + e.toString());
-            _outReader.inject("Failed to initialise Python node: " + e.toString());
+            _logger.error("Failed to initialise " + _languageName + " node: " + e.toString());
+            _outReader.inject("Failed to initialise " + _languageName + " node: " + e.toString());
             handleException("Initialisation", e);
 
             // unregister any bindings that were applied before the failure so a
@@ -487,21 +509,25 @@ public class PyNode extends BaseDynamicNode {
     }
 
     /**
-     * Loads and executes the toolkit bootstrap script (nodetoolkit.py) before user scripts.
+     * Loads and executes the language's toolkit bootstrap script
+     * (nodetoolkit.py or nodetoolkit.js) before user scripts.
      */
     private void loadToolkit() throws IOException {
+        boolean isJs = JS_LANGUAGE_ID.equals(_languageId);
+        String toolkitResource = isJs ? JS_TOOLKIT_RESOURCE : PY_TOOLKIT_RESOURCE;
+
         // Load toolkit from classpath (absolute path is more reliable)
-        try (InputStream is = PyNode.class.getResourceAsStream(TOOLKIT_RESOURCE)) {
+        try (InputStream is = PyNode.class.getResourceAsStream(toolkitResource)) {
             if (is == null) {
-                throw new FileNotFoundException("Required resource not found: " + TOOLKIT_RESOURCE);
+                throw new FileNotFoundException("Required resource not found: " + toolkitResource);
             }
             // Extract to node's meta directory
-            File toolkitFile = new File(_metaRoot, "nodetoolkit.py");
-            toolkitFile.getParentFile().mkdirs(); 
+            File toolkitFile = new File(_metaRoot, isJs ? "nodetoolkit.js" : "nodetoolkit.py");
+            toolkitFile.getParentFile().mkdirs();
             Stream.writeFully(toolkitFile, readFullyFromStream(is));
             _logger.info("Extracted toolkit script to: {}", toolkitFile.getAbsolutePath());
             // Execute it
-            Source source = Source.newBuilder(PYTHON_LANGUAGE_ID, toolkitFile).build();
+            Source source = Source.newBuilder(_languageId, toolkitFile).build();
             _pythonContext.eval(source);
             _logger.info("Executed toolkit bootstrap script");
             _outReader.inject("Executed toolkit bootstrap script");
@@ -522,12 +548,38 @@ public class PyNode extends BaseDynamicNode {
     }
 
     /**
+     * Detects the node's script file and language: 'script.js' selects
+     * GraalJS, otherwise 'script.py' / GraalPy (the default). If both files
+     * are present, Python wins (and a warning is logged).
+     */
+    private void detectScriptLanguage() {
+        File pyFile = new File(_root, "script.py");
+        File jsFile = new File(_root, "script.js");
+
+        if (jsFile.exists() && !pyFile.exists()) {
+            _scriptFile = jsFile;
+            _languageId = JS_LANGUAGE_ID;
+            _languageName = "JavaScript";
+        } else {
+            if (jsFile.exists() && pyFile.exists())
+                _logger.warn("Both script.py and script.js are present; using script.py");
+
+            _scriptFile = pyFile;
+            _languageId = PYTHON_LANGUAGE_ID;
+            _languageName = "Python";
+        }
+    }
+
+    /**
      * Creates and configures the GraalVM context.
      */
     private Context createContext() {
         // Ensure LineReaders are initialized first
         _outReader = new LineReader();
         _errReader = new LineReader();
+
+        // select the guest language from the script file present in the node folder
+        detectScriptLanguage();
 
         // IMPORTANT: Set handlers IMMEDIATELY after creation
         _outReader.setHandler(new Handler.H1<String>() {
@@ -547,14 +599,14 @@ public class PyNode extends BaseDynamicNode {
         OutputStream stdoutStream = makeStream(_outReader);
         OutputStream stderrStream = makeStream(_errReader);
 
-        _logger.info("Creating GraalVM Python context for node '{}'", getName());
+        _logger.info("Creating GraalVM {} context for node '{}'", _languageName, getName());
 
         try {
             // Capture the classloader
             ClassLoader hostCl = Thread.currentThread().getContextClassLoader();
 
             // Use standard Context.newBuilder instead of GraalPyResources.contextBuilder
-            _pythonContext = Context.newBuilder("python")
+            _pythonContext = Context.newBuilder(_languageId)
                 .allowHostAccess(HostAccess.ALL)
                 .allowHostClassLookup(name -> true)
                 .hostClassLoader(hostCl)
@@ -566,7 +618,7 @@ public class PyNode extends BaseDynamicNode {
                 .build();
             return _pythonContext;
         } catch (Exception e) {
-            _logger.error("Failed to create GraalVM Python context", e);
+            _logger.error("Failed to create GraalVM " + _languageName + " context", e);
             throw new RuntimeException("Context creation failed", e);
         }
     }
@@ -599,7 +651,7 @@ public class PyNode extends BaseDynamicNode {
      */
     private void executeFileScript(File scriptFile) throws IOException {
         _logger.info("Executing script: " + scriptFile.getName());
-        Source source = Source.newBuilder(PYTHON_LANGUAGE_ID, scriptFile).build();
+        Source source = Source.newBuilder(_languageId, scriptFile).build();
         try {
             _pythonContext.eval(source);
         } catch (PolyglotException e) {
@@ -618,7 +670,7 @@ public class PyNode extends BaseDynamicNode {
             throw new FileNotFoundException("Resource not found: " + resourcePath);
         }
         String scriptContent = readFullyFromStream(is);
-        Source source = Source.newBuilder(PYTHON_LANGUAGE_ID, scriptContent, scriptName).build();
+        Source source = Source.newBuilder(_languageId, scriptContent, scriptName).build();
         try {
             _pythonContext.eval(source);
         } catch (PolyglotException e) {
@@ -634,7 +686,7 @@ public class PyNode extends BaseDynamicNode {
      */
     private org.graalvm.polyglot.Value executePythonFunction(String functionName) {
         try {
-            org.graalvm.polyglot.Value func = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember(functionName);
+            org.graalvm.polyglot.Value func = _pythonContext.getBindings(_languageId).getMember(functionName);
             if (func != null && func.canExecute()) {
                 return func.execute();
             } else {
@@ -656,15 +708,26 @@ public class PyNode extends BaseDynamicNode {
         _logger.error(String.format("Error %s: %s", context, e.getMessage()));
 
         if (e.isGuestException()) {
-            // surface a Python-style traceback in the console's error stream
+            // surface a language-native traceback in the console's error stream
             // (parity with the Jython host)
-            for (String line : renderPythonTraceback(e).split("\n"))
+            for (String line : renderGuestTraceback(e).split("\n"))
                 _errReader.inject(line);
         } else {
             _errReader.inject("(" + context + ") " + e.toString());
         }
 
         _logger.error("PolyglotException during '{}'", context, e);
+    }
+
+    /**
+     * Renders a guest exception in its language's native style — a CPython
+     * traceback for Python nodes, an Error + stack for JavaScript nodes.
+     */
+    private String renderGuestTraceback(PolyglotException e) {
+        if (JS_LANGUAGE_ID.equals(_languageId))
+            return formatJavaScriptStack(e);
+
+        return renderPythonTraceback(e);
     }
 
     /**
@@ -732,6 +795,37 @@ public class PyNode extends BaseDynamicNode {
     }
 
     /**
+     * Formats a guest (JavaScript) exception the way a JS engine would print
+     * it — "TypeError: detail" followed by "    at func (file:line)" frames.
+     */
+    static String formatJavaScriptStack(PolyglotException e) {
+        StringBuilder sb = new StringBuilder();
+
+        // GraalJS messages are already in "ErrorType: detail" form
+        sb.append(e.getMessage());
+
+        if (e.isSyntaxError()) {
+            org.graalvm.polyglot.SourceSection loc = e.getSourceLocation();
+            if (loc != null && loc.getSource() != null)
+                sb.append("\n    at ").append(loc.getSource().getName())
+                  .append(":").append(loc.getStartLine());
+            return sb.toString();
+        }
+
+        for (PolyglotException.StackFrame frame : e.getPolyglotStackTrace()) {
+            if (!frame.isGuestFrame())
+                continue;
+            org.graalvm.polyglot.SourceSection ss = frame.getSourceLocation();
+            String file = (ss != null && ss.getSource() != null) ? ss.getSource().getName() : "<unknown>";
+            int line = ss != null ? ss.getStartLine() : -1;
+            sb.append("\n    at ").append(frame.getRootName())
+              .append(" (").append(file).append(":").append(line).append(")");
+        }
+
+        return sb.toString();
+    }
+
+    /**
      * Handles general exceptions.
      */
     private void handleException(String context, Exception e) {
@@ -783,14 +877,21 @@ public class PyNode extends BaseDynamicNode {
     }
 
     protected void checkReload() {
-        if (_closed || !_scriptFile.exists()) {
+        if (_closed)
+            return;
+
+        // consider both languages' script files so a node can be converted
+        // between script.py and script.js (reload() re-detects the language)
+        if (!_scriptFile.exists()
+                && !new File(_root, "script.py").exists()
+                && !new File(_root, "script.js").exists()) {
             return;
         }
 
         long currentHash = calculateFileModifiedHash();
 
         if (currentHash != _fileModifiedHash) {
-            _logger.info("Change detected, reloading Python node...");
+            _logger.info("Change detected, reloading " + _languageName + " node...");
 
             try {
                 reload();
@@ -868,7 +969,7 @@ public class PyNode extends BaseDynamicNode {
         }
         try {
             _pythonContext.enter();
-            org.graalvm.polyglot.Value func = _pythonContext.getBindings(PYTHON_LANGUAGE_ID).getMember(functionName);
+            org.graalvm.polyglot.Value func = _pythonContext.getBindings(_languageId).getMember(functionName);
             if (func != null && func.canExecute()) {
                 _pythonFunctions.put(functionName, func);
             } else {
@@ -883,7 +984,17 @@ public class PyNode extends BaseDynamicNode {
 
     // --- Action / Event Handling --- Override methods from BaseDynamicNode ---
 
-    public void handleActionRequest(SimpleName actionName, Object arg, final ActionRequestHandler handler) {
+    public void handleActionRequest(SimpleName actionName, Object arg, ActionRequestHandler origHandler) {
+        // a completion callback is optional (the declarative-binding path has none)
+        final ActionRequestHandler handler = (origHandler != null ? origHandler : new ActionRequestHandler() {
+
+            @Override
+            public void handleActionRequest(Object result) {
+                // (fire-and-forget; failures are already surfaced in the console)
+            }
+
+        });
+
         if (_closed || _pythonContext == null) {
              handler.handleActionRequest(new RuntimeException("Node is closed or not initialised"));
              return;
@@ -1052,15 +1163,15 @@ public class PyNode extends BaseDynamicNode {
     }
 
     /**
-     * Evaluates a Python expression within the node's context.
+     * Evaluates a script expression within the node's context.
      * Used by REST API and other clients.
      *
      * @param expr The Python expression to evaluate
      * @param source A description of the source of the request (for logging)
      * @return The result of the evaluation
      */
-    @Service(name="eval", title="Evaluate", desc="Evaluates a Python expression.")
-    public Object eval(@Param(name="expr", title="Expression", desc="A Python expression.") final String expr,
+    @Service(name="eval", title="Evaluate", desc="Evaluates a script expression (in the node's language).")
+    public Object eval(@Param(name="expr", title="Expression", desc="A script expression.") final String expr,
                       String source) throws Exception {
         if (_closed || _pythonContext == null)
             throw new RuntimeException("The interpreter is not initialized or has been closed.");
@@ -1073,7 +1184,7 @@ public class PyNode extends BaseDynamicNode {
             try {
                 _pythonContext.enter();
 
-                Source source1 = Source.newBuilder(PYTHON_LANGUAGE_ID, expr, "eval").buildLiteral(); 
+                Source source1 = Source.newBuilder(_languageId, expr, "eval").buildLiteral(); 
                 org.graalvm.polyglot.Value result = _pythonContext.eval(source1);
 
                 if (result.isString()) {
@@ -1103,8 +1214,8 @@ public class PyNode extends BaseDynamicNode {
      * @param code The Python code to execute
      * @param source A description of the source of the request (for logging)
      */
-    @Service(name="exec", title="Execute", desc="Execute Python code fragment.")
-    public void exec(@Param(name="code", title="Code", desc="A Python code fragment.") final String code,
+    @Service(name="exec", title="Execute", desc="Execute a script code fragment (in the node's language).")
+    public void exec(@Param(name="code", title="Code", desc="A script code fragment.") final String code,
                     String source) throws Exception {
         if (_closed || _pythonContext == null)
             throw new RuntimeException("The interpreter is not initialized or has been closed.");
@@ -1125,7 +1236,7 @@ public class PyNode extends BaseDynamicNode {
                 boolean evaluated = false;
                 try {
                     _logger.debug("Trying to evaluate as expression (literal): [{}]", code);
-                    Source exprSource = Source.newBuilder(PYTHON_LANGUAGE_ID, code, source).buildLiteral(); 
+                    Source exprSource = Source.newBuilder(_languageId, code, source).buildLiteral(); 
                     org.graalvm.polyglot.Value result = _pythonContext.eval(exprSource);
                     _logger.debug("Evaluation as expression succeeded.");
 
@@ -1164,7 +1275,7 @@ public class PyNode extends BaseDynamicNode {
 
                 if (!evaluated) {
                     _logger.debug("Executing code fragment as statement: {}", code);
-                    _pythonContext.eval(Source.newBuilder(PYTHON_LANGUAGE_ID, code, source).build()); 
+                    _pythonContext.eval(Source.newBuilder(_languageId, code, source).build()); 
                     _logger.debug("Execution as statement finished.");
                 }
 
@@ -1239,8 +1350,8 @@ public class PyNode extends BaseDynamicNode {
 
         _pythonFunctions.clear();
 
-        _logger.info("Python node destroyed.");
-        _outReader.inject("Python node destroyed.");
+        _logger.info(_languageName + " node destroyed.");
+        _outReader.inject(_languageName + " node destroyed.");
     }
 
     /**
@@ -1285,7 +1396,10 @@ public class PyNode extends BaseDynamicNode {
      * Finds Python files in a directory (non-recursive).
      */
     private List<File> findPyFiles(File dir) {
-        File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".py"));
+        File[] files = dir.listFiles((d, name) -> {
+            String lc = name.toLowerCase();
+            return lc.endsWith(".py") || lc.endsWith(".js");
+        });
         return files != null ? Arrays.asList(files) : new ArrayList<>();
     }
 
@@ -1409,7 +1523,7 @@ public class PyNode extends BaseDynamicNode {
         try {
             _pythonContext.enter();
             try {
-                _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember(globalName, hostObject);
+                _pythonContext.getBindings(_languageId).putMember(globalName, hostObject);
             } finally {
                 try { _pythonContext.leave(); } catch (Exception e) { /* ignore */ }
             }

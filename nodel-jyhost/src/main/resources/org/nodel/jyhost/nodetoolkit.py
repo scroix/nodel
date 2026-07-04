@@ -342,7 +342,7 @@ def json_decode(json_str: str) -> Any:
 
 def same_value(obj1: Any, obj2: Any) -> bool:
     """Deep comparison of two values"""
-    return _toolkit.sameValue(obj1, obj2)
+    return _toolkit.areSameValue(obj1, obj2)
 
 def is_empty(obj: Any) -> bool:
     """Check if object is empty"""
@@ -408,25 +408,25 @@ def lookup_local_action(name):
     """Find a local action by name."""
     if not _toolkit:
         raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.lookupLocalAction(name)
+    return _toolkit.getLocalAction(name)
 
 def lookup_local_event(name):
     """Find a local event by name."""
     if not _toolkit:
         raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.lookupLocalEvent(name)
+    return _toolkit.getLocalEvent(name)
 
 def lookup_remote_action(name):
     """Find a remote action by name."""
     if not _toolkit:
         raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.lookupRemoteAction(name)
+    return _toolkit.getRemoteAction(name)
 
 def lookup_remote_event(name):
     """Find a remote event by name."""
     if not _toolkit:
         raise RuntimeError("Toolkit not properly initialized")
-    return _toolkit.lookupRemoteEvent(name)
+    return _toolkit.getRemoteEvent(name)
 
 # Make commonly used items available at module level
 __all__ = [

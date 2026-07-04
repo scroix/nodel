@@ -11,8 +11,17 @@
 #   3. Jython remote action -> GraalVM local action    (A -> B)
 #   4. GraalVM remote action -> Jython local action    (B -> A)
 #
+# The GraalVM host additionally runs a JavaScript node ('script.js' under
+# GraalJS — goal 2) cross-bound to the stock Jython peer, asserting:
+#
+#   5. GraalJS event -> Jython remote event handler    (JS -> A)
+#   6. Jython event  -> GraalJS remote event handler   (A -> JS)
+#   7. GraalJS remote action -> Jython local action    (JS -> A)
+#   8. Jython remote action -> GraalJS local action    (A -> JS)
+#
 # This is the regression gate for POLYGLOT goals 2 & 3 (see the goal spec /
-# POLYGLOT_INTEGRATION.md).
+# POLYGLOT_INTEGRATION.md). See also polyglot-smoke.sh (JS <-> Python nodes
+# within one host).
 #
 # Environment overrides:
 #   STOCK_NODEL_VERSION  release tag to test against (default v2.2.1.542)
@@ -104,9 +113,11 @@ rm -rf "$JY_HOME" "$GR_HOME"
 mkdir -p "$JY_HOME/nodes/Jython Peer" "$GR_HOME/nodes/Graal Peer"
 
 # --- stock host node: legacy Jython 2.5 recipe
+# (bound to BOTH GraalVM-host peers: the Python one and the JavaScript one)
 cat > "$JY_HOME/nodes/Jython Peer/script.py" <<'EOF'
 local_event_Ping = LocalEvent({'title': 'Ping', 'schema': {'type': 'string'}})
 remote_action_RemotePoke = RemoteAction({'title': 'Remote Poke', 'schema': {'type': 'string'}})
+remote_action_RemotePokeJs = RemoteAction({'title': 'Remote Poke JS', 'schema': {'type': 'string'}})
 
 def local_action_SendPing(arg):
     console.info('ping sent: %s' % arg)
@@ -119,8 +130,15 @@ def local_action_PokePeer(arg):
     console.info('poking peer: %s' % arg)
     remote_action_RemotePoke.call(arg)
 
+def local_action_PokeJsPeer(arg):
+    console.info('poking js peer: %s' % arg)
+    remote_action_RemotePokeJs.call(arg)
+
 def remote_event_PeerPing(arg):
     console.info('peer ping received: %s' % arg)
+
+def remote_event_JsPeerPing(arg):
+    console.info('js peer ping received: %s' % arg)
 
 def main():
     console.info('jython peer started')
@@ -129,8 +147,14 @@ EOF
 cat > "$JY_HOME/nodes/Jython Peer/nodeConfig.json" <<'EOF'
 {
     "remoteBindingValues": {
-        "actions": {"RemotePoke": {"node": "Graal Peer", "action": "Poke"}},
-        "events": {"PeerPing": {"node": "Graal Peer", "event": "Ping"}}
+        "actions": {
+            "RemotePoke": {"node": "Graal Peer", "action": "Poke"},
+            "RemotePokeJs": {"node": "Graal JS Peer", "action": "Poke"}
+        },
+        "events": {
+            "PeerPing": {"node": "Graal Peer", "event": "Ping"},
+            "JsPeerPing": {"node": "Graal JS Peer", "event": "Ping"}
+        }
     },
     "paramValues": {}
 }
@@ -163,6 +187,46 @@ def main():
 EOF
 
 cat > "$GR_HOME/nodes/Graal Peer/nodeConfig.json" <<'EOF'
+{
+    "remoteBindingValues": {
+        "actions": {"RemotePoke": {"node": "Jython Peer", "action": "Poke"}},
+        "events": {"PeerPing": {"node": "Jython Peer", "event": "Ping"}}
+    },
+    "paramValues": {}
+}
+EOF
+
+# --- GraalVM host node: JavaScript recipe (GraalJS, goal 2) — bound to the
+# stock Jython peer over the same wire protocols
+mkdir -p "$GR_HOME/nodes/Graal JS Peer"
+cat > "$GR_HOME/nodes/Graal JS Peer/script.js" <<'EOF'
+var local_event_Ping = LocalEvent({ title: 'Ping', schema: { type: 'string' } });
+var remote_action_RemotePoke = RemoteAction({ title: 'Remote Poke', schema: { type: 'string' } });
+
+function local_action_SendPing(arg) {
+    console.info('ping sent: ' + arg);
+    local_event_Ping.emit(arg);
+}
+
+function local_action_Poke(arg) {
+    console.info('poked: ' + arg);
+}
+
+function local_action_PokePeer(arg) {
+    console.info('poking peer: ' + arg);
+    remote_action_RemotePoke.call(arg);
+}
+
+function remote_event_PeerPing(arg) {
+    console.info('peer ping received: ' + arg);
+}
+
+function main() {
+    console.info('graal js peer started');
+}
+EOF
+
+cat > "$GR_HOME/nodes/Graal JS Peer/nodeConfig.json" <<'EOF'
 {
     "remoteBindingValues": {
         "actions": {"RemotePoke": {"node": "Jython Peer", "action": "Poke"}},
@@ -253,6 +317,27 @@ log "checking remote action GraalVM -> Jython"
 check_roundtrip "action GraalVM->Jython" \
     "$GR_PORT" GraalPeer PokePeer "ac-gr2jy-$STAMP" \
     "$JY_PORT" JythonPeer "poked: ac-gr2jy-$STAMP" || RESULT=1
+
+# ------------------------- GraalJS node vs the stock Jython host (goal 2)
+log "checking event propagation GraalJS -> Jython"
+check_roundtrip "event GraalJS->Jython" \
+    "$GR_PORT" GraalJSPeer SendPing "ev-js2jy-$STAMP" \
+    "$JY_PORT" JythonPeer "js peer ping received: ev-js2jy-$STAMP" || RESULT=1
+
+log "checking event propagation Jython -> GraalJS"
+check_roundtrip "event Jython->GraalJS" \
+    "$JY_PORT" JythonPeer SendPing "ev-jy2js-$STAMP" \
+    "$GR_PORT" GraalJSPeer "peer ping received: ev-jy2js-$STAMP" || RESULT=1
+
+log "checking remote action GraalJS -> Jython"
+check_roundtrip "action GraalJS->Jython" \
+    "$GR_PORT" GraalJSPeer PokePeer "ac-js2jy-$STAMP" \
+    "$JY_PORT" JythonPeer "poked: ac-js2jy-$STAMP" || RESULT=1
+
+log "checking remote action Jython -> GraalJS"
+check_roundtrip "action Jython->GraalJS" \
+    "$JY_PORT" JythonPeer PokeJsPeer "ac-jy2js-$STAMP" \
+    "$GR_PORT" GraalJSPeer "poked: ac-jy2js-$STAMP" || RESULT=1
 
 # mutual discovery is implied by the bindings above wiring up at all, but assert
 # the advertised-node views cross-registered too (nodeURLs is the same endpoint

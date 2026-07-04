@@ -19,10 +19,12 @@
 
 > [!IMPORTANT]
 > You are on the **`v3` branch** — **Nodel 3.x**, the next-generation line where node
-> scripts run on **GraalVM Python (Python 3)** instead of Jython 2.5. It is developed
-> alongside regular Nodel (2.2.x, the `dev` branch) and remains fully wire-compatible
-> with existing 2.2.x hosts. See `POLYGLOT_INTEGRATION.md` for architecture and status,
-> and `examples/python3/` for modern recipe examples.
+> scripts run on **GraalVM** instead of Jython 2.5: recipes can be written in
+> **Python 3** (`script.py`, GraalPy) or **JavaScript** (`script.js`, GraalJS), side by
+> side in the same host. It is developed alongside regular Nodel (2.2.x, the `dev`
+> branch) and remains fully wire-compatible with existing 2.2.x hosts. See
+> `POLYGLOT_INTEGRATION.md` for architecture and status, `examples/python3/` for modern
+> Python recipes and `examples/javascript/` for the JavaScript authoring guide.
 
 Nodel is an open source digital media control system for museums and galleries.
 
