@@ -1,30 +1,21 @@
 import org.joda.time.DateTime
-import org.gradle.api.plugins.JavaPluginExtension
-import org.gradle.jvm.toolchain.JavaLanguageVersion
-import org.gradle.jvm.toolchain.JavaToolchainService
 
-// Configure dependencies required by the build script itself
 buildscript {
-    // Define repositories where build script dependencies can be found
     repositories {
-        mavenCentral() // Use Maven Central repository
+        mavenCentral()
     }
-    // Define build script dependencies
     dependencies {
-        // Add Joda-Time library for date/time operations within the build script
-        classpath 'joda-time:joda-time:2.10.10'
+        classpath 'joda-time:joda-time:2.14.0'
     }
 }
 
-// Define extra project-wide properties accessible in this build script and subprojects
 ext {
-    // Closure to retrieve Git information using command-line git commands
     getGitInfo = {
         def branch = ""
         def id = ""
         def rev = ""
         def origin = ""
-        
+
         try {
             branch = new ByteArrayOutputStream().withStream { os ->
                 exec {
@@ -33,7 +24,7 @@ ext {
                 }
                 return os.toString().trim()
             }
-            
+
             id = new ByteArrayOutputStream().withStream { os ->
                 exec {
                     commandLine 'git', 'rev-parse', 'HEAD'
@@ -41,7 +32,7 @@ ext {
                 }
                 return os.toString().trim()
             }
-            
+
             rev = new ByteArrayOutputStream().withStream { os ->
                 exec {
                     commandLine 'git', 'rev-list', '--count', 'HEAD'
@@ -49,7 +40,7 @@ ext {
                 }
                 return os.toString().trim()
             }
-            
+
             origin = new ByteArrayOutputStream().withStream { os ->
                 exec {
                     commandLine 'git', 'config', '--get', 'remote.origin.url'
@@ -60,27 +51,21 @@ ext {
         } catch (Exception e) {
             logger.warn("Error executing git command: ${e.message}")
         }
-        
+
         return [
-                branch : 'git rev-parse --abbrev-ref HEAD'.execute().text.trim(), // Get current branch name
-                id     : 'git rev-parse HEAD'.execute().text.trim(), // Get current commit hash
-                rev    : 'git rev-list --count HEAD'.execute().text.trim(), // Get commit count (revision number)
-                origin : 'git config --get remote.origin.url'.execute().text.trim() // Get remote origin URL
+                branch : branch,
+                id     : id,
+                rev    : rev,
+                origin : origin
         ]
     }
 
-    // Execute the closure to get Git info
     gitInfo = getGitInfo()
-    // Set a build summary based on the commit ID
     buildSummary = gitInfo.id
-    // Get the local hostname
     hostname = InetAddress.getLocalHost().getHostName().toUpperCase()
-    // Get the current date and time
     now = DateTime.now().toString()
-    // Sanitize the revision number (remove non-alphanumeric chars)
     rev = gitInfo.rev.replaceAll(/[^a-zA-Z0-9]/, '')
 
-    // Determine a sanitized branch name ('release' for 'master', strip prefixes)
     branch = gitInfo.branch
     if (branch == 'master') {
         branch = 'release'
@@ -88,99 +73,25 @@ ext {
         branch = branch.substring(branch.indexOf('/') + 1)
     }
 
-    // Define the base version of the project
     baseVersion = '2.2.1'
-    // Construct a detailed version identifier using base version, branch, and revision
     versionIdentifier = "${baseVersion}-${branch}_r${rev}"
-    // Print the calculated version identifier to the console during build
     println "versionIdentifier: ${versionIdentifier}"
 }
 
-// Apply common configuration to all projects in this multi-project build
-allprojects {
-    // Apply Java plugin if not already applied (common practice)
-    // If your subprojects already apply it, this might be redundant
-    // but often necessary in the allprojects block for the config below to work.
-    // Consider if 'java-library' or other plugins are used instead.
-    apply plugin: 'java' 
-
-    // Configure Java Toolchain for Java 21
-    java {
-        toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
-            // Optional: Specify vendor if needed, e.g., GraalVM
-            // vendor = JvmVendorSpec.GRAAL_VM 
-        }
-    }
-
-    // Ensure compile tasks use the toolchain JDK
-    tasks.withType(JavaCompile).configureEach {
-        // Check if the java property exists before accessing toolchain
-        // This guards against projects that might not have the java extension (e.g., JS-only)
-        if (project.extensions.findByType(JavaPluginExtension)) {
-            def javaToolchains = project.extensions.findByType(JavaToolchainService)
-            if (javaToolchains) {
-                def toolchain = javaToolchains.compilerFor(project.java.toolchain)
-                if (toolchain.present) {
-                     options.fork = true // Forking is often required for toolchains
-                     options.forkOptions.javaHome = file(toolchain.get().metadata.installationPath)
-                } else {
-                    project.logger.warn("Could not find Java 21 toolchain compiler for project ${project.name}")
-                }
-            }
-        }
-    }
-
-    // Ensure test tasks use the toolchain launcher
-    tasks.withType(Test).configureEach {
-        if (project.extensions.findByType(JavaPluginExtension)) {
-            def javaToolchains = project.extensions.findByType(JavaToolchainService)
-             if (javaToolchains) {
-                 def toolchainLauncher = javaToolchains.launcherFor(project.java.toolchain)
-                 if (toolchainLauncher.present) {
-                      javaLauncher = toolchainLauncher
-                 } else {
-                     project.logger.warn("Could not find Java 21 toolchain launcher for project ${project.name}")
-                 }
-             }
-        }
-    }
-
-    // Ensure JavaExec tasks (like the 'run' task from 'application' plugin) use the toolchain
-    tasks.withType(JavaExec).configureEach {
-        if (project.extensions.findByType(JavaPluginExtension)) {
-            def javaToolchains = project.extensions.findByType(JavaToolchainService)
-             if (javaToolchains) {
-                 def toolchainLauncher = javaToolchains.launcherFor(project.java.toolchain)
-                 if (toolchainLauncher.present) {
-                      javaLauncher = toolchainLauncher
-                 } else {
-                      project.logger.warn("Could not find Java 21 toolchain launcher for JavaExec task in project ${project.name}")
-                 }
-             }
-        }
-    }
-}
-
-// Apply common configuration to all subprojects in this multi-project build
 subprojects {
-    // Apply the Java plugin to enable Java compilation and related tasks
     apply plugin: 'java'
-    // Set the group ID for artifacts produced by subprojects
     group = 'org.nodel'
-    // Set the version for subprojects, inheriting from the root project's baseVersion
     version = rootProject.ext.baseVersion
 
-    // Configure the Java toolchain
+    // GraalVM Polyglot (GraalPy) requires JDK 21+; the toolchain is auto-provisioned
+    // by the foojay resolver (see settings.gradle) when no local JDK 21 is found
     java {
         toolchain {
-            // Specify the Java language version to use for compilation
             languageVersion = JavaLanguageVersion.of(21)
         }
     }
 
-    // Define repositories where project dependencies can be found
     repositories {
-        mavenCentral() // Use Maven Central repository for subproject dependencies
+        mavenCentral()
     }
 }
