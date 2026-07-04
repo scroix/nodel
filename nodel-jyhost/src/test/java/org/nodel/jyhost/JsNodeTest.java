@@ -6,8 +6,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.nodel.SimpleName;
 
+import org.nodel.io.Stream;
+
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -41,17 +42,7 @@ public class JsNodeTest {
         if (sharedHost != null)
             sharedHost.shutdown();
 
-        deleteDirectory(sharedTempDirectory.toFile());
-    }
-
-    private static void deleteDirectory(File directory) {
-        if (directory.isDirectory()) {
-            File[] files = directory.listFiles();
-            if (files != null)
-                for (File file : files)
-                    deleteDirectory(file);
-        }
-        directory.delete();
+        org.nodel.io.Files.tryFlushDir(sharedTempDirectory.toFile(), true);
     }
 
     private static File newNodeDir(String name) throws Exception {
@@ -61,7 +52,7 @@ public class JsNodeTest {
     }
 
     private static void write(File dir, String filename, String content) throws Exception {
-        Files.write(new File(dir, filename).toPath(), content.getBytes(StandardCharsets.UTF_8));
+        Stream.writeFully(new File(dir, filename), content);
     }
 
     private static final String JS_SCRIPT =

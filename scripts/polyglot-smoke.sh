@@ -28,8 +28,7 @@ PG_PORT="${PG_PORT:-8197}"
 
 HOST_PID=""
 
-log()  { printf '\n== %s\n' "$*"; }
-fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+. "$ROOT/scripts/smoke-lib.sh"
 
 cleanup() {
     [ -n "$HOST_PID" ] && kill "$HOST_PID" 2>/dev/null || true
@@ -38,81 +37,20 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------- java (21+)
-find_java() {
-    if [ -n "${SMOKE_JAVA:-}" ]; then echo "$SMOKE_JAVA"; return; fi
-    # a JDK 21 the Gradle toolchain provisioned earlier
-    local candidate
-    while IFS= read -r candidate; do
-        [ -x "$candidate" ] || continue
-        if "$candidate" -version 2>&1 | grep -qE 'version "(2[1-9]|[3-9][0-9])'; then
-            echo "$candidate"; return
-        fi
-    done < <(find "$HOME/.gradle/jdks" -name java -type f -path '*/bin/java' 2>/dev/null)
-    # a system JDK 21
-    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
-        if home=$(/usr/libexec/java_home -v 21+ 2>/dev/null); then
-            echo "$home/bin/java"; return
-        fi
-    fi
-    command -v java || true
-}
-
-JAVA="$(find_java)"
-[ -n "$JAVA" ] || fail "no java found; set SMOKE_JAVA"
-"$JAVA" -version 2>&1 | grep -qE 'version "(2[1-9]|[3-9][0-9])' \
-    || fail "need Java 21+ to run the GraalVM host; found: $("$JAVA" -version 2>&1 | head -1). Set SMOKE_JAVA."
-log "using java: $JAVA"
+require_java21
 
 # ---------------------------------------------------------------------- jar
 mkdir -p "$WORK"
 
-if [ -z "${GRAAL_NODEL_JAR:-}" ]; then
-    GRAAL_NODEL_JAR="$(ls -t "$ROOT"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar 2>/dev/null | head -1 || true)"
-    if [ -z "$GRAAL_NODEL_JAR" ]; then
-        log "building GraalVM host jar"
-        (cd "$ROOT" && ./gradlew -q :nodel-jyhost:shadowJar)
-        GRAAL_NODEL_JAR="$(ls -t "$ROOT"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar | head -1)"
-    fi
-fi
-log "graal jar: $GRAAL_NODEL_JAR"
+resolve_graal_jar "$ROOT"
 
 # ------------------------------------------------------------------ recipes
 PG_HOME="$WORK/polyglot-host"
 rm -rf "$PG_HOME"
 mkdir -p "$PG_HOME/nodes/JS Peer" "$PG_HOME/nodes/Py Peer"
 
-# --- the JavaScript node (GraalJS)
-cat > "$PG_HOME/nodes/JS Peer/script.js" <<'EOF'
-var local_event_Ping = LocalEvent({ title: 'Ping', schema: { type: 'string' } });
-var remote_action_RemotePoke = RemoteAction({ title: 'Remote Poke', schema: { type: 'string' } });
-var param_Prefix = Parameter({ title: 'Prefix', schema: { type: 'string' } });
-
-function local_action_SendPing(arg) {
-    console.info('ping sent: ' + arg);
-    local_event_Ping.emit(arg);
-}
-
-function local_action_Poke(arg) {
-    console.info('poked: ' + arg);
-}
-
-function local_action_PokePeer(arg) {
-    console.info('poking peer: ' + arg);
-    remote_action_RemotePoke.call(arg);
-}
-
-function local_action_ShowPrefix() {
-    console.info('prefix is: ' + param_Prefix);
-}
-
-function remote_event_PeerPing(arg) {
-    console.info('peer ping received: ' + arg);
-}
-
-function main() {
-    console.info('js peer started');
-}
-EOF
+# --- the JavaScript node (GraalJS) — the shared fixture from smoke-lib.sh
+write_js_peer_script "$PG_HOME/nodes/JS Peer/script.js" "js peer started"
 
 cat > "$PG_HOME/nodes/JS Peer/nodeConfig.json" <<'EOF'
 {
@@ -158,47 +96,14 @@ cat > "$PG_HOME/nodes/Py Peer/nodeConfig.json" <<'EOF'
 EOF
 
 # --------------------------------------------------------------------- host
-# The host shuts down when stdin reaches EOF, so it reads from a named FIFO
-# whose write end this script holds open (fd 9) for its lifetime.
-mkfifo "$PG_HOME/.stdin"
-( cd "$PG_HOME" && exec "$JAVA" -jar "$GRAAL_NODEL_JAR" -p "$PG_PORT" <.stdin >output.log 2>error.log ) &
-HOST_PID=$!
-exec 9>"$PG_HOME/.stdin"
-
-log "waiting for host on :$PG_PORT"
-for i in $(seq 1 60); do
-    if curl -sf -o /dev/null "http://127.0.0.1:$PG_PORT/"; then
-        log "host is up on :$PG_PORT"
-        break
-    fi
-    sleep 1
-    [ "$i" -eq 60 ] && fail "host did not come up on :$PG_PORT (check logs under $PG_HOME)"
-done
+# (start_host holds the FIFO write end open on fd 9 for the script's lifetime)
+log "starting host on :$PG_PORT"
+start_host "$PG_HOME" "$GRAAL_NODEL_JAR" "$PG_PORT" 9
+HOST_PID=$STARTED_PID
+wait_http "$PG_PORT" "polyglot host"
 
 # --------------------------------------------------------------- assertions
-invoke() { # <node> <action> <arg>
-    curl -sf -X POST -H 'Content-Type: application/json' -d "{\"arg\": \"$3\"}" \
-        "http://127.0.0.1:$PG_PORT/REST/nodes/$1/actions/$2/call" >/dev/null
-}
-
-console_contains() { # <node> <text>
-    curl -sf "http://127.0.0.1:$PG_PORT/REST/nodes/$1/console?from=0&max=500" | grep -qF "$2"
-}
-
-# poll: invoke <src> repeatedly until <dst> console shows the marker
-check_roundtrip() { # <label> <src-node> <action> <marker> <dst-node> <expected>
-    local label="$1" snode="$2" action="$3" marker="$4" dnode="$5" expected="$6" i
-    for i in $(seq 1 45); do
-        invoke "$snode" "$action" "$marker" || true
-        sleep 2
-        if console_contains "$dnode" "$expected"; then
-            printf 'PASS: %s\n' "$label"
-            return 0
-        fi
-    done
-    printf 'FAIL: %s (marker %s never arrived)\n' "$label" "$marker" >&2
-    return 1
-}
+# (invoke / console_contains / check_roundtrip come from smoke-lib.sh)
 
 STAMP=$$-$(date +%s)
 RESULT=0
@@ -207,7 +112,7 @@ log "checking both node types initialised in one host"
 node_started() { # <node> <marker> <label>
     local i
     for i in $(seq 1 30); do
-        if console_contains "$1" "$2"; then
+        if console_contains "$PG_PORT" "$1" "$2"; then
             printf 'PASS: %s\n' "$3"
             return 0
         fi
@@ -240,26 +145,26 @@ log "checking JS parameter save / reload round trip"
 if curl -sf -X POST -H 'Content-Type: application/json' -d "{\"Prefix\": \"pfx-$STAMP\"}" \
         "http://127.0.0.1:$PG_PORT/REST/nodes/JSPeer/params/save" >/dev/null; then
     check_roundtrip "JS parameter round trip" \
-        JSPeer ShowPrefix "" JSPeer "prefix is: pfx-$STAMP" || RESULT=1
+        "$PG_PORT" JSPeer ShowPrefix "" "$PG_PORT" JSPeer "prefix is: pfx-$STAMP" || RESULT=1
 else
     echo "FAIL: JS parameter save rejected" >&2; RESULT=1
 fi
 
 log "checking event propagation JS -> Python"
 check_roundtrip "event JS->Python" \
-    JSPeer SendPing "ev-js2py-$STAMP" PyPeer "peer ping received: ev-js2py-$STAMP" || RESULT=1
+    "$PG_PORT" JSPeer SendPing "ev-js2py-$STAMP" "$PG_PORT" PyPeer "peer ping received: ev-js2py-$STAMP" || RESULT=1
 
 log "checking event propagation Python -> JS"
 check_roundtrip "event Python->JS" \
-    PyPeer SendPing "ev-py2js-$STAMP" JSPeer "peer ping received: ev-py2js-$STAMP" || RESULT=1
+    "$PG_PORT" PyPeer SendPing "ev-py2js-$STAMP" "$PG_PORT" JSPeer "peer ping received: ev-py2js-$STAMP" || RESULT=1
 
 log "checking remote action JS -> Python"
 check_roundtrip "action JS->Python" \
-    JSPeer PokePeer "ac-js2py-$STAMP" PyPeer "poked: ac-js2py-$STAMP" || RESULT=1
+    "$PG_PORT" JSPeer PokePeer "ac-js2py-$STAMP" "$PG_PORT" PyPeer "poked: ac-js2py-$STAMP" || RESULT=1
 
 log "checking remote action Python -> JS"
 check_roundtrip "action Python->JS" \
-    PyPeer PokePeer "ac-py2js-$STAMP" JSPeer "poked: ac-py2js-$STAMP" || RESULT=1
+    "$PG_PORT" PyPeer PokePeer "ac-py2js-$STAMP" "$PG_PORT" JSPeer "poked: ac-py2js-$STAMP" || RESULT=1
 
 if [ "$RESULT" -eq 0 ]; then
     log "ALL POLYGLOT CHECKS PASSED"

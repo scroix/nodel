@@ -41,8 +41,7 @@ GR_PORT="${GR_PORT:-8196}"
 JY_PID=""
 GR_PID=""
 
-log()  { printf '\n== %s\n' "$*"; }
-fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+. "$ROOT/scripts/smoke-lib.sh"
 
 cleanup() {
     [ -n "$JY_PID" ] && kill "$JY_PID" 2>/dev/null || true
@@ -52,30 +51,7 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------- java (21+)
-find_java() {
-    if [ -n "${SMOKE_JAVA:-}" ]; then echo "$SMOKE_JAVA"; return; fi
-    # a JDK 21 the Gradle toolchain provisioned earlier
-    local candidate
-    while IFS= read -r candidate; do
-        [ -x "$candidate" ] || continue
-        if "$candidate" -version 2>&1 | grep -qE 'version "(2[1-9]|[3-9][0-9])'; then
-            echo "$candidate"; return
-        fi
-    done < <(find "$HOME/.gradle/jdks" -name java -type f -path '*/bin/java' 2>/dev/null)
-    # a system JDK 21
-    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
-        if home=$(/usr/libexec/java_home -v 21+ 2>/dev/null); then
-            echo "$home/bin/java"; return
-        fi
-    fi
-    command -v java || true
-}
-
-JAVA="$(find_java)"
-[ -n "$JAVA" ] || fail "no java found; set SMOKE_JAVA"
-"$JAVA" -version 2>&1 | grep -qE 'version "(2[1-9]|[3-9][0-9])' \
-    || fail "need Java 21+ to run the GraalVM host; found: $("$JAVA" -version 2>&1 | head -1). Set SMOKE_JAVA."
-log "using java: $JAVA"
+require_java21
 
 # ---------------------------------------------------------------------- jars
 mkdir -p "$WORK"
@@ -96,15 +72,7 @@ if [ -z "${STOCK_NODEL_JAR:-}" ]; then
 fi
 log "stock jar: $STOCK_NODEL_JAR"
 
-if [ -z "${GRAAL_NODEL_JAR:-}" ]; then
-    GRAAL_NODEL_JAR="$(ls -t "$ROOT"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar 2>/dev/null | head -1 || true)"
-    if [ -z "$GRAAL_NODEL_JAR" ]; then
-        log "building GraalVM host jar"
-        (cd "$ROOT" && ./gradlew -q :nodel-jyhost:shadowJar)
-        GRAAL_NODEL_JAR="$(ls -t "$ROOT"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar | head -1)"
-    fi
-fi
-log "graal jar: $GRAAL_NODEL_JAR"
+resolve_graal_jar "$ROOT"
 
 # ------------------------------------------------------------------ recipes
 JY_HOME="$WORK/jython-host"
@@ -199,32 +167,7 @@ EOF
 # --- GraalVM host node: JavaScript recipe (GraalJS, goal 2) — bound to the
 # stock Jython peer over the same wire protocols
 mkdir -p "$GR_HOME/nodes/Graal JS Peer"
-cat > "$GR_HOME/nodes/Graal JS Peer/script.js" <<'EOF'
-var local_event_Ping = LocalEvent({ title: 'Ping', schema: { type: 'string' } });
-var remote_action_RemotePoke = RemoteAction({ title: 'Remote Poke', schema: { type: 'string' } });
-
-function local_action_SendPing(arg) {
-    console.info('ping sent: ' + arg);
-    local_event_Ping.emit(arg);
-}
-
-function local_action_Poke(arg) {
-    console.info('poked: ' + arg);
-}
-
-function local_action_PokePeer(arg) {
-    console.info('poking peer: ' + arg);
-    remote_action_RemotePoke.call(arg);
-}
-
-function remote_event_PeerPing(arg) {
-    console.info('peer ping received: ' + arg);
-}
-
-function main() {
-    console.info('graal js peer started');
-}
-EOF
+write_js_peer_script "$GR_HOME/nodes/Graal JS Peer/script.js" "graal js peer started"
 
 cat > "$GR_HOME/nodes/Graal JS Peer/nodeConfig.json" <<'EOF'
 {
@@ -237,27 +180,7 @@ cat > "$GR_HOME/nodes/Graal JS Peer/nodeConfig.json" <<'EOF'
 EOF
 
 # -------------------------------------------------------------------- hosts
-# The host shuts down when stdin reaches EOF, so each host reads from a named
-# FIFO whose write end this script holds open (fd 8 / fd 9) for its lifetime.
-start_host() { # <home> <jar> <port> <stdin-fd>; sets STARTED_PID
-    local home="$1" jar="$2" port="$3" fd="$4"
-    mkfifo "$home/.stdin"
-    ( cd "$home" && exec "$JAVA" -jar "$jar" -p "$port" <.stdin >output.log 2>error.log ) &
-    STARTED_PID=$!
-    eval "exec $fd>'$home/.stdin'"
-}
-
-wait_http() { # <port> <label>
-    local port="$1" label="$2" i
-    for i in $(seq 1 60); do
-        if curl -sf -o /dev/null "http://127.0.0.1:$port/"; then
-            log "$label is up on :$port"
-            return 0
-        fi
-        sleep 1
-    done
-    fail "$label did not come up on :$port (check logs under $WORK)"
-}
+# (start_host / wait_http come from smoke-lib.sh; fd 8 / fd 9 hold the FIFOs open)
 
 log "starting stock Jython host on :$JY_PORT"
 start_host "$JY_HOME" "$STOCK_NODEL_JAR" "$JY_PORT" 8
@@ -271,29 +194,7 @@ wait_http "$JY_PORT" "Jython host"
 wait_http "$GR_PORT" "GraalVM host"
 
 # --------------------------------------------------------------- assertions
-invoke() { # <port> <node> <action> <arg>
-    curl -sf -X POST -H 'Content-Type: application/json' -d "{\"arg\": \"$4\"}" \
-        "http://127.0.0.1:$1/REST/nodes/$2/actions/$3/call" >/dev/null
-}
-
-console_contains() { # <port> <node> <text>
-    curl -sf "http://127.0.0.1:$1/REST/nodes/$2/console?from=0&max=500" | grep -qF "$3"
-}
-
-# poll: invoke <src> repeatedly until <dst> console shows the marker
-check_roundtrip() { # <label> <src-port> <src-node> <action> <marker> <dst-port> <dst-node> <expected>
-    local label="$1" sport="$2" snode="$3" action="$4" marker="$5" dport="$6" dnode="$7" expected="$8" i
-    for i in $(seq 1 45); do
-        invoke "$sport" "$snode" "$action" "$marker" || true
-        sleep 2
-        if console_contains "$dport" "$dnode" "$expected"; then
-            printf 'PASS: %s\n' "$label"
-            return 0
-        fi
-    done
-    printf 'FAIL: %s (marker %s never arrived)\n' "$label" "$marker" >&2
-    return 1
-}
+# (invoke / console_contains / check_roundtrip come from smoke-lib.sh)
 
 STAMP=$$-$(date +%s)
 RESULT=0

@@ -20,10 +20,8 @@
  * cannot discover (or later replace) them.
  */
 
-(function () {
-    if (typeof _toolkit === 'undefined')
-        throw new Error("Nodel toolkit not properly initialized. '_toolkit' missing.");
-})();
+if (typeof _toolkit === 'undefined')
+    throw new Error("Nodel toolkit not properly initialized. '_toolkit' missing.");
 
 // --- console -------------------------------------------------------------
 // Replace GraalJS's built-in console with the node's console so that
@@ -62,7 +60,7 @@ function Parameter(metadata) { return _processMetadata(metadata); }
 
 /** Create a local action that other nodes can call (like @local_action). */
 function createLocalAction(name, handler, metadata) {
-    return _toolkit.createAction(name, function (arg) { return handler(arg); }, _processMetadata(metadata));
+    return _toolkit.createAction(name, handler, _processMetadata(metadata));
 }
 
 /** Create a local event that can be emitted. */
@@ -78,7 +76,7 @@ function createRemoteAction(name, metadata, suggestedNode, suggestedAction) {
 
 /** Create a remote event handler that listens to another node (like @remote_event). */
 function createRemoteEvent(name, handler, metadata, suggestedNode, suggestedEvent) {
-    return _toolkit.createRemoteEvent(name, function (arg) { handler(arg); }, _processMetadata(metadata),
+    return _toolkit.createRemoteEvent(name, handler, _processMetadata(metadata),
             suggestedNode || null, suggestedEvent || null);
 }
 
