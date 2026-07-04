@@ -7,6 +7,7 @@ package org.nodel.reflection;
  */
 
 import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -378,11 +379,7 @@ public class Serialisation {
         
         // create a new instance or ...
         if (dstObj == null) {
-            try {
-                object = klass.newInstance();
-            } catch (Exception exc) {
-                throw new SerialisationException("Could not create instance of requested type plain object, " + klass.getName(), exc);
-            }
+            object = instantiate(klass, "plain object");
         } else {
             // ... use provided object
             object = dstObj;
@@ -561,11 +558,7 @@ public class Serialisation {
                 // a well new 'Collection' class, ArrayList
                 instance = new ArrayList<Object>();
             } else {
-                try {
-                    instance = (Collection<Object>) klass.newInstance();
-                } catch (Exception exc) {
-                    throw new SerialisationException("Could not create instance of requested type, Collection.", exc);
-                }
+                instance = (Collection<Object>) instantiate(klass, "collection");
             }
         } else {
             // ...use provided one
@@ -629,11 +622,7 @@ public class Serialisation {
                 instance = new LinkedHashMap<Object, Object>();
             } else {
                 // use the klass that was specified
-                try {
-                    instance = (Map<Object, Object>) klass.newInstance();
-                } catch (Exception exc) {
-                    throw new SerialisationException("Could not create an instance of a requested type, Map.", exc);
-                }
+                instance = (Map<Object, Object>) instantiate(klass, "map");
             }
         } else {
             // ... use the provided object
@@ -790,7 +779,7 @@ public class Serialisation {
                 for (ValueInfo fieldInfo : fieldInfos) {
                     try {
                     	String key = fieldInfo.name;
-                        if (Strings.isNullOrEmpty(key))
+                        if (key == null || key.isEmpty())
                             key = fieldInfo.member.getName();
 
                         if (excludePasswords) {
@@ -921,6 +910,17 @@ public class Serialisation {
             return DateTime.parse(value, _customFullFormatter);
         } catch (Exception exc) {
             return null;
+        }
+    }
+    
+    private static <T> T instantiate(Class<T> klass, String context) {
+        try {
+            Constructor<T> ctor = klass.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            return ctor.newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new SerialisationException(
+                "Could not instantiate " + context + ": " + klass.getName(), e);
         }
     }
     

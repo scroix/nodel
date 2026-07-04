@@ -1,0 +1,250 @@
+> This document tracks the migration of **Nodel** from a Jython-based "Python 2 on the JVM" model to a **GraalVM Polyglot** model that runs **Python 3**.
+> It is intended both as architecture reference and as an up-to-date progress ledger.
+
+---
+
+## 1. Vision & Top-Level Goals
+
+---
+
+1.  **First-class Python 3**
+    *   Enable node authors to write modern Python without Jython's limitations.
+    *   Permit use of current Python libraries (subject to GraalPy compatibility).
+
+2.  **One polyglot bridge, many languages**
+    *   While the immediate target is Python, GraalVM also unlocks JavaScript, Ruby, R, etc., for future node types.
+
+3.  **Keep the Java host intact**
+    *   Networking, persistence, scheduling and web UI continue to live in `nodel-framework` / `nodel-jyhost` with minimal API churn for scripts.
+
+---
+
+## 2. Architecture Snapshot (GraalVM Path)
+
+---
+
+```mermaid
+graph TD
+    Browser -->|REST / WebSocket| PyNodePlugin[Java Host (PyNode plugin)<br>• creates Context per node<br>• injects ManagedToolkit<br>• evals nodetoolkit + user];
+    HostCore[Java Host (Core)<br>• HTTPD / UI<br>• Discovery / I/O<br>• Persistency] <--> PyNodePlugin;
+    PyNodePlugin -->|Polyglot API| GraalPyContext[GraalPy Context<br>(per node)];
+    GraalPyContext -->|Python calls| PythonScripts[script.py<br>recipes/*];
+
+    style Browser fill:#f9f,stroke:#333,stroke-width:2px;
+    style HostCore fill:#ccf,stroke:#333,stroke-width:2px;
+    style PyNodePlugin fill:#ccf,stroke:#333,stroke-width:2px;
+    style GraalPyContext fill:#cfc,stroke:#333,stroke-width:2px;
+    style PythonScripts fill:#cfc,stroke:#333,stroke-width:2px;
+```
+
+**Key facts**
+
+*   One `org.graalvm.polyglot.Context` per node; created in `PyNode.createContext()`.
+*   `allowAllAccess(true)` is a temporary bootstrap; will be hardened (see tasks).
+*   `nodetoolkit.py` is executed first; it wraps the injected Java `ManagedToolkit` and recreates decorators (`@local_action`, `@remote_event`, …).
+*   `BindingsExtractor` walks the Context's Python globals (`Value`) and registers Nodel actions/events/params.
+
+---
+
+## 3. Progress to Date (Apr 2025)
+
+---
+
+*   [x] **Interpreter swap**
+    *   Jython removed from build; GraalPy libs added.
+    *   Python stdout/stderr bridged to Nodel console with line buffering.
+
+*   [x] **Lifecycle parity**
+    *   `before_main`, `main`, `after_main`, `at_cleanup` executed in order.
+    *   Hot-reload works on script/config file change.
+
+*   [x] **Bindings discovery**
+    *   Extractor rewritten for `Value` API; JSON/docstring metadata handled.
+
+*   [x] **Python-side toolkit**
+    *   Console shim keeps `console.instance` pattern alive.
+    *   Timer, TCP, UDP, call/call_safe, decorator helpers ported.
+
+*   [x] **Build & runtime** (Jul 2026)
+    *   Gradle 8.14.5, Java 21 via auto-provisioned Gradle toolchain (foojay
+        resolver) — a clean checkout builds with no machine-specific setup and
+        no local JDK 21. The shadow jar carries an `Add-Opens` manifest so
+        `java -jar nodelhost.jar` runs flagless on Java 21+.
+    *   Node starts, runs recipes, REPL (`exec`, `eval`) functional.
+    *   Rebased onto `dev` (Playwright integration/e2e suite, LocalAutoDNS test
+        discovery, dependency bumps); full `./gradlew build` green.
+
+*   [x] **Node management & config parity** (Jul 2026)
+    *   Restored the REST services the interpreter swap had dropped: `params`,
+        `remote`, `restart`, `rename`, `update`, `remove`, `files`.
+    *   `nodeConfig.json` is loaded on init and saved via the services; saved
+        remote-binding values and parameter values inject into the extracted
+        bindings; `param_X` globals receive their saved values before `main()`.
+    *   Live host objects are exposed back into Python globals (`local_event_X`,
+        `remote_action_X`) so `.emit(...)` / `.call(...)` work like Jython.
+    *   Hot reload actually monitors the script/config files; failed script
+        loads keep the node alive in an inspectable error state.
+    *   The toolkit is enabled after `main()` (managed TCP/UDP now connect).
+
+*   [x] **Wire compatibility proven** (Jul 2026)
+    *   `scripts/compat-smoke.sh`: stock release `nodelhost` (Jython,
+        v2.2.1.542) and the GraalVM host side-by-side with real multicast
+        discovery + Nodel TCP binding — mutual discovery and remote
+        action/event round-trips pass in BOTH directions.
+
+*   [x] **Demo Python 3 recipes** (Jul 2026)
+    *   `examples/python3/` — TCP device node and timer/scheduler node with
+        actions, events and parameters, REST-verified.
+
+---
+
+## 4. Remaining Work (priority-ordered)
+
+---
+
+### 4.1 HostAccess hardening
+
+_(Deliberately out of scope for landing the migration: the GraalPy host keeps
+the same trust model as the Jython host today — recipes are fully trusted code.
+`allowAllAccess`/`HostAccess.ALL` stays until a dedicated hardening pass.)_
+
+*   [ ] Switch `allowAllAccess(true)` -> `HostAccess.EXPLICIT`.
+*   [ ] Annotate `ManagedToolkit` and other exposed classes with `@HostAccess.Export`.
+*   [ ] Add negative tests ensuring forbidden reflection is blocked.
+
+### 4.2 Toolkit internal clean-up
+
+*   [x] Remove lingering `PyObject`, `PyFunction` fields; replace with `Value` when a back-reference is required.
+*   [x] Audit methods that still return/accept Jython types.
+
+### 4.3 Residual Jython code paths
+
+*   [x] pysp servlet / template engine. Decide: port or deprecate.
+*   [x] CLI helpers (JyConsole, etc.) – likely obsolete; remove or port.
+*   [x] Unit tests referencing `PythonInterpreter`.
+
+### 4.4 Recipe import semantics
+
+*   [x] Reinstate Java import hook (`JavaImportFinder`) *or* document `polyglot.import_value("java.type", "...")`.
+*   [x] Run Python 2->3 conversion on official recipe set; fix remaining syntax.
+
+### 4.5 Threading & Callback discipline
+
+*   [x] Decide on one of:
+    *   a) single `_busy` lock + CallbackQueue, or
+    *   b) rely solely on CallbackQueue (GraalPy already serialises).
+*   [x] Remove redundant locking.
+
+**Decision**: Option B was chosen. The `_busy` lock has been removed from PyNode, relying instead on GraalVM's native thread safety mechanisms and the CallbackQueue. Thread safety tests have been implemented to validate this approach (see PyNodeThreadingTest.java). This simplification improves performance by reducing lock contention while maintaining thread safety guarantees.
+
+### 4.6 Context-in-native-image
+
+*   [ ] Supply reflection/resource configs for Native Image (JGit, Jetty, SLF4J).
+*   [ ] Add CI job building `nodel-jyhost-native`.
+
+### 4.7 Error surfacing
+
+*   [x] Map `PolyglotException` into structured JSON for web UI (parity with Jython).
+
+**Implementation**: guest exceptions are rendered with Python's own `traceback`
+module (via the guest exception object), so the web console's `err` stream shows
+a genuine CPython-style traceback — file, line, function, source caret for syntax
+errors — as structured console-log JSON items. A synthesised formatter
+(`PyNode.formatPythonTraceback`) is the fallback when the guest object isn't
+usable. A broken script no longer kills node creation: the node stays alive in an
+error state (console inspectable, hot reload picks up the fix), matching Jython
+behaviour.
+
+### 4.8 Parameter serialisation check
+
+*   [x] Verify `jsonEncode/jsonDecode` round-trip for GraalPy values; patch where necessary.
+
+**Implementation**: `PolyglotValues` (nodel-framework) normalises guest values —
+str/int/float/bool/None, lists, dicts, nested — into plain Java objects before
+serialisation, and parses any top-level JSON value on decode (the stock
+serialisation layer only accepted JSON objects, emitted top-level strings
+unquoted, and dropped `None` dict values). `ManagedToolkit.toJson/fromJson`
+(recipe `json_encode`/`json_decode`) delegate to it; `nodetoolkit.py` had been
+calling the old `jsonEncode`/`jsonDecode` names, which no longer existed.
+Verified by `GraalPyJsonRoundTripTest`.
+
+### 4.9 Documentation & tooling
+
+*   [x] BUILDING.md updated: JDK 21 + auto-provisioned toolchain (no
+    `GRAALVM_HOME` needed — stock OpenJDK works), testing and wire-compat
+    smoke instructions.
+*   [x] Recipe-authoring notes for Python 3 differences (see §6).
+*   [ ] Provide a "compatibility matrix" (feature / Jython / GraalPy).
+
+---
+
+## 5. Short-Term Roadmap
+
+---
+
+*   **Week 1**
+    *   Lock down HostAccess; fix compile errors.
+    *   Purge obvious Jython classes; green build.
+
+*   **Week 2**
+    *   Decide fate of pysp; implement path.
+    *   Reactivate Java import hook; upgrade 10 pilot recipes.
+
+*   **Week 3**
+    *   Native-image CI; reflection configs.
+    *   Web-UI error propagation parity.
+
+*   **Week 4**
+    *   Full recipe migration; ship beta artefact.
+
+---
+
+## 6. Conventions & Tips for Node Authors
+
+---
+
+Working demo recipes live in `examples/python3/` (TCP device + scheduler).
+
+**Python 3 language differences** (vs the Jython 2.5 host)
+
+*   `print('x')` is a function — `print 'x'` is a syntax error.
+*   f-strings are available and preferred: `print(f'level: {level}')`.
+*   `dict.items()` / `.keys()` / `.values()` replace `iteritems()` etc.
+*   Integer division is `//`; `/` always yields a float.
+*   Exceptions: `except Exception as e:` (not `except Exception, e:`).
+*   `unicode`/`basestring` are gone — everything is `str`.
+
+**Toolkit / binding conventions** (unchanged from Jython)
+
+*   Declarative bindings still work the same way: `param_X = Parameter({...})`,
+    `local_event_X = LocalEvent({...})`, `remote_action_X = RemoteAction({...})`,
+    `def remote_event_X(arg): ...`, and the `@local_action({...})` decorator.
+    After startup the placeholders are replaced with live objects, so
+    `local_event_X.emit(arg)` and `remote_action_X.call(arg)` behave as before.
+*   Timers and network helpers are injected into the script's namespace by the
+    toolkit (no import needed): `Timer`, `TCP`, `UDP`, `call`, `call_safe`,
+    `json_encode`, `json_decode`, lifecycle decorators (`@before_main`,
+    `@after_main`, `@at_cleanup`).
+
+**Java interop**
+
+*   Import Java types with the GraalPy interop API:
+    ```python
+    import java
+    Git = java.type('org.eclipse.jgit.api.Git')
+    ```
+    Plain `import org.eclipse.jgit...` also works via the toolkit's import hook.
+
+**Error reporting**
+
+*   Script and handler errors surface in the node's web console as genuine
+    Python tracebacks (file, line, function) on the error stream — same place
+    as the Jython host.
+
+---
+
+## 7. Acknowledgements
+
+---
+
+This migration builds on the original Nodel architecture by Museum Victoria, enriched by the GraalVM community and contributors to this branch. Everyone is welcome to file issues and PRs against the **v3** branch — the long-lived GraalVM (Nodel 3.x) line developed alongside regular Nodel (`dev`, 2.2.x).

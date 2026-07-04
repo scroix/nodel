@@ -15,7 +15,7 @@ ext {
         def id = ""
         def rev = ""
         def origin = ""
-        
+
         try {
             branch = new ByteArrayOutputStream().withStream { os ->
                 exec {
@@ -24,7 +24,7 @@ ext {
                 }
                 return os.toString().trim()
             }
-            
+
             id = new ByteArrayOutputStream().withStream { os ->
                 exec {
                     commandLine 'git', 'rev-parse', 'HEAD'
@@ -32,7 +32,7 @@ ext {
                 }
                 return os.toString().trim()
             }
-            
+
             rev = new ByteArrayOutputStream().withStream { os ->
                 exec {
                     commandLine 'git', 'rev-list', '--count', 'HEAD'
@@ -40,7 +40,7 @@ ext {
                 }
                 return os.toString().trim()
             }
-            
+
             origin = new ByteArrayOutputStream().withStream { os ->
                 exec {
                     commandLine 'git', 'config', '--get', 'remote.origin.url'
@@ -51,7 +51,7 @@ ext {
         } catch (Exception e) {
             logger.warn("Error executing git command: ${e.message}")
         }
-        
+
         return [
                 branch : branch,
                 id     : id,
@@ -73,7 +73,7 @@ ext {
         branch = branch.substring(branch.indexOf('/') + 1)
     }
 
-    baseVersion = '2.2.1'
+    baseVersion = '3.0.0'
     versionIdentifier = "${baseVersion}-${branch}_r${rev}"
     println "versionIdentifier: ${versionIdentifier}"
 }
@@ -82,15 +82,15 @@ subprojects {
     apply plugin: 'java'
     group = 'org.nodel'
     version = rootProject.ext.baseVersion
-    
+
+    // GraalVM Polyglot (GraalPy) requires JDK 21+; the toolchain is auto-provisioned
+    // by the foojay resolver (see settings.gradle) when no local JDK 21 is found
     java {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
     }
-    
-    tasks.withType(JavaCompile).configureEach {
-        options.release = 11
-    }
+
     repositories {
         mavenCentral()
     }

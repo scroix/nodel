@@ -472,7 +472,16 @@ public abstract class NanoHTTPD {
                     String methodName = input.getMethod().name();
 
                     Properties params = new Properties();
-                    params.putAll(input.getParms()); // input.getParameters();
+                    // Adapted for getParameters(): Map<String, List<String>>
+                    Map<String, List<String>> paramMap = input.getParameters();
+                    if (paramMap != null) {
+                        for (Map.Entry<String, List<String>> entry : paramMap.entrySet()) {
+                            List<String> values = entry.getValue();
+                            if (values != null && !values.isEmpty()) {
+                                params.put(entry.getKey(), values.get(0));
+                            }
+                        }
+                    }
 
                     Properties headers = new Properties();
                     headers.putAll(input.getHeaders());
@@ -968,7 +977,7 @@ public abstract class NanoHTTPD {
     }
 
     protected Response prepareFoundResponse(String uri) {
-        Response res = new Response(Status.FOUND, MIME_HTML, "<html><body>Redirected: <a href=\"" + uri + "\">" + uri + "</a></body></html>");
+        Response res = new Response(Status.REDIRECT, MIME_HTML, "<html><body>Redirected: <a href=\"" + uri + "\">" + uri + "</a></body></html>");
         res.addHeader("Location", uri);
 
         return res;

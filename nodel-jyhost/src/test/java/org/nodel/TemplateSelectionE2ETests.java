@@ -331,10 +331,21 @@ public class TemplateSelectionE2ETests extends TestBase {
     private static void typeTemplateSearch(String query) {
         Locator templateInput = page.locator(".nodel-add .unified-template-search").first();
         assertTrue(templateInput.isVisible(), "Template search input must exist");
-        templateInput.click();
-        templateInput.fill("");
-        templateInput.type(query);
-        page.waitForSelector(".template-autocomplete");
+        // the autocomplete renders on keyup after a debounce; under CI load a
+        // keystroke can slip past it, so retry the query before failing
+        for (int attempt = 1; ; attempt++) {
+            templateInput.click();
+            templateInput.fill("");
+            templateInput.type(query);
+            try {
+                page.waitForSelector(".template-autocomplete",
+                    new Page.WaitForSelectorOptions().setTimeout(10000));
+                return;
+            } catch (com.microsoft.playwright.TimeoutError e) {
+                if (attempt == 3)
+                    throw e;
+            }
+        }
     }
 
     private static void waitForAutocompleteItemInSection(String section, String text) {

@@ -3,75 +3,44 @@ plugins {
     id 'application'
     id 'maven-publish'
     id 'eclipse'
+    id 'org.graalvm.buildtools.native' version '0.10.6'
+    id 'com.gradleup.shadow' version '8.3.5'
+    // NOTE: the 'org.graalvm.python' plugin is deliberately NOT applied — it is only
+    // needed to vendor pip packages into the jar and it forces a Java 17+ Gradle
+    // daemon; the GraalPy runtime + stdlib come from the org.graalvm.python:python
+    // dependency below
+}
+
+// Adjust these versions to the latest available
+def polyglotVersion = '24.2.0' // or newer
+
+// JPMS openings required by GraalPy embedding (mirrors the 'run' task and the
+// shadow jar's Add-Opens manifest attribute)
+def graalpyAddOpens = [
+        '--add-opens=java.base/java.lang=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+        '--add-opens=java.base/java.io=ALL-UNNAMED',
+        '--add-opens=java.base/java.util=ALL-UNNAMED',
+        '--add-opens=java.base/java.nio=ALL-UNNAMED',
+        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED'
+]
+
+configurations.all {
+    resolutionStrategy {
+        force "org.graalvm.polyglot:polyglot:${polyglotVersion}"
+        force "org.graalvm.polyglot:python:${polyglotVersion}"
+    }
 }
 
 repositories {
     mavenCentral()
 }
 
-application {
-    mainClass = 'org.nodel.jyhost.Launch'
-}
+description = 'Nodel JyHost'
 
-run {
-    standardInput = System.in
-}
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.release = 11
-}
-
-jar {
-    from "$buildDir/output"
-    archiveBaseName = 'nodel-jyhost'
-    manifest {
-        attributes 'Implementation-Title': 'Nodel JyHost',
-                'Implementation-Version': archiveVersion
-    }
-}
-
-tasks.register('fatJar', Jar) {
-    manifest {
-        attributes 'Implementation-Title': 'Nodel JyHost',
-                'Implementation-Version': archiveVersion,
-                'Main-Class': application.mainClass.get()
-    }
-    archiveAppendix = rootProject.ext.branch
-    archiveBaseName = 'nodelhost'
-    archiveClassifier = 'rev' + rootProject.ext.rev
-    destinationDirectory = new File(buildDir, 'distributions/standalone')
-    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
-    with jar
-    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-tasks.register('unversioned', Copy) {
-    dependsOn 'fatJar'
-    from(new File(buildDir, 'distributions/standalone')) {
-        rename '.*($archiveVersion)*', 'nodelhost.jar'
-    }
-
-    into new File(buildDir, 'distributions/standalone')
-}
-
-tasks.build {
-    finalizedBy 'fatJar'
-}
-
-tasks.named('distTar') {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-tasks.named('distZip') {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
+// ------------------------------------------------------------------
+// Dependencies
+// ------------------------------------------------------------------
 configurations {
     // carries LocalAutoDNS (nodel-framework's test fixtures) so startNodelhost can put it
     // on the launched host's classpath without it shipping in any production jar
@@ -84,13 +53,12 @@ dependencies {
     discoveryFixture testFixtures(project(':nodel-framework'))
     implementation 'commons-daemon:commons-daemon:1.6.0'
     implementation 'org.slf4j:slf4j-api:1.7.10'
-    implementation 'org.python:jython-standalone:2.5.4-rc1'
 
     // for the Nodel HTTP client:
     implementation group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.14'
 
     // convenience dependency: required *only* for 'recipe sync' node
-    implementation 'org.eclipse.jgit:org.eclipse.jgit:3.7.1.201504261725-r'
+    implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
 
     // convenience dependency: required for new SNMP-based nodes
     implementation('org.snmp4j:snmp4j:2.5.8') {
@@ -105,6 +73,13 @@ dependencies {
     // Add joda-time dependency
     implementation 'joda-time:joda-time:2.14.0'
 
+    // ------------------------------------------------------------------
+    // GraalVM for JDK 21 dependencies for embedding polyglot Python
+    // ------------------------------------------------------------------
+
+    implementation "org.graalvm.python:python:${polyglotVersion}"
+    implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"
+
     // Playwright e2e testing
     testImplementation 'com.microsoft.playwright:playwright:1.52.0'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.12.2'
@@ -114,12 +89,123 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
 }
 
-// Test infrastructure documentation moved to BUILDING.md (see "TESTING").
+// ------------------------------------------------------------------
+// Application plugin
+// ------------------------------------------------------------------
+application {
+    mainClass = 'org.nodel.jyhost.Launch'
+}
+
+// ------------------------------------------------------------------
+// Jar / FatJar tasks
+// ------------------------------------------------------------------
+jar {
+    from "$buildDir/output"
+    archiveBaseName = 'nodel-jyhost'
+    manifest {
+        attributes(
+                'Implementation-Title': 'Nodel JyHost',
+                'Implementation-Version': archiveVersion
+        )
+    }
+}
+
+
+shadowJar {
+    archiveBaseName = 'nodelhost'
+    archiveAppendix = rootProject.ext.branch
+    archiveClassifier = 'rev' + rootProject.ext.rev
+    destinationDirectory = new File(buildDir, 'distributions/standalone')
+
+    manifest {
+        attributes(
+                'Implementation-Title': 'Nodel JyHost',
+                'Implementation-Version': archiveVersion,
+                'Main-Class': application.mainClass,
+                // lets 'java -jar nodelhost.jar' run without explicit --add-opens flags
+                'Add-Opens': graalpyAddOpens.collect { it.replace('--add-opens=', '').replace('=ALL-UNNAMED', '') }.join(' ')
+        )
+    }
+
+    mergeServiceFiles()
+    mergeServiceFiles('META-INF/graalpython')
+    mergeServiceFiles('META-INF/native')
+
+    mergeServiceFiles('META-INF/services/*')
+    mergeServiceFiles('META-INF/truffle/*')
+    mergeServiceFiles('META-INF/native-image/*')
+
+    // Merge Truffle files using the service file transformer
+    mergeServiceFiles('META-INF/truffle/language')
+    mergeServiceFiles('META-INF/truffle/instrument')
+
+    mergeServiceFiles('META-INF/services/org.graalvm.polyglot.*')
+
+    // Your existing excludes for signing files
+    exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+}
+
+// Configure JVM arguments for the run task to handle JPMS restrictions
+run {
+    standardInput = System.in
+
+    jvmArgs = graalpyAddOpens + ['--enable-native-access=ALL-UNNAMED']
+}
+
+tasks.build.dependsOn tasks.shadowJar
+
+tasks.register('unversioned', Copy) {
+    dependsOn 'shadowJar'
+    from(new File(buildDir, 'distributions/standalone')) {
+        rename('.*($archiveVersion)*', 'nodelhost.jar')
+    }
+    into new File(buildDir, 'distributions/standalone')
+}
+
+// ------------------------------------------------------------------
+// GraalVM Native Image Configuration
+// (Requires GraalVM for JDK 21 or later when building native images.)
+// ------------------------------------------------------------------
+graalvmNative {
+
+    agent {
+        defaultMode = 'conditional'
+    }
+    binaries {
+        main {
+            resources.autodetect()
+            imageName = 'nodelhost'
+            buildArgs.addAll([
+                    // If certain classes should init at build-time or run-time:
+
+                    '--initialize-at-build-time=org.slf4j',
+                    '-H:+ReportExceptionStackTraces'
+            ])
+        }
+    }
+}
+
+// Avoid duplicates in distribution tasks
+tasks.named('distTar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.named('distZip') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// ------------------------------------------------------------------
+// Test infrastructure (integration & e2e) — see BUILDING.md "TESTING"
+// ------------------------------------------------------------------
 def nodelProcess = null
 def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
 def discoveryEnv = System.getenv('NODEL_TEST_DISCOVERY')
 def useLocalDiscovery = (discoveryEnv == null || discoveryEnv.trim().isEmpty()
         || discoveryEnv.trim().equalsIgnoreCase('false') || discoveryEnv.trim().equals('0'))
+
+// the host under test must run on the same JDK the toolchain compiles for
+// (a PATH 'java' may be older and unable to run GraalPy)
+def testHostLauncher = javaToolchains.launcherFor(java.toolchain)
 
 tasks.register('cleanNodelhostTemp', Delete) {
     delete layout.projectDirectory.dir('nodelhost-temp')
@@ -128,6 +214,7 @@ tasks.register('cleanNodelhostTemp', Delete) {
 tasks.register('startNodelhost') {
     dependsOn 'cleanNodelhostTemp', 'classes', configurations.discoveryFixture
     doLast {
+        def javaExe = testHostLauncher.get().executablePath.asFile.absolutePath
         def hostClasspath = files(sourceSets.main.runtimeClasspath, configurations.discoveryFixture).asPath
         // Kill any existing process on the test port before starting
         if (isWindows) {
@@ -152,7 +239,8 @@ tasks.register('startNodelhost') {
         def pb
         if (isWindows) {
             // Windows: Start java directly with stdin pipe to keep process alive
-            def args = ['java', '-cp', hostClasspath, '-ea']
+            def args = [javaExe, '-cp', hostClasspath, '-ea']
+            args.addAll(graalpyAddOpens)
             if (useLocalDiscovery) {
                 args.add('-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance')
             }
@@ -164,7 +252,7 @@ tasks.register('startNodelhost') {
             def discoveryArg = useLocalDiscovery ? "-Dorg.nodel.discovery.impl='org.nodel.discovery.LocalAutoDNS;instance' " : ""
             pb = new ProcessBuilder(
                 'bash', '-c',
-                "tail -f /dev/null | java -cp '${hostClasspath}' -ea ${discoveryArg}org.nodel.jyhost.Launch -p 18085"
+                "tail -f /dev/null | '${javaExe}' -cp '${hostClasspath}' -ea ${graalpyAddOpens.join(' ')} ${discoveryArg}org.nodel.jyhost.Launch -p 18085"
             )
         }
         pb.directory(tempDir)
@@ -244,6 +332,11 @@ tasks.register('playwrightInstall', JavaExec) {
 test {
     dependsOn 'startNodelhost'
     useJUnitPlatform()
+    jvmArgs graalpyAddOpens
+    // GraalPy contexts are memory-hungry and some tests boot host singletons;
+    // isolate each test class in its own worker JVM with enough heap
+    forkEvery = 1
+    maxHeapSize = '2g'
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true
@@ -257,6 +350,9 @@ task integrationTest(type: Test) {
     useJUnitPlatform {
         excludeTags 'e2e'
     }
+    jvmArgs graalpyAddOpens
+    forkEvery = 1
+    maxHeapSize = '2g'
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true
@@ -270,6 +366,9 @@ task e2eTest(type: Test) {
     useJUnitPlatform {
         includeTags 'e2e'
     }
+    jvmArgs graalpyAddOpens
+    forkEvery = 1
+    maxHeapSize = '2g'
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true

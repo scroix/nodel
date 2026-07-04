@@ -28,8 +28,6 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -233,16 +231,14 @@ public abstract class BaseLogger extends MarkerIgnoringBase {
 
     private static void loadProperties() {
         // Add props from the resource simplelogger.properties
-        InputStream in = AccessController.doPrivileged(new PrivilegedAction<InputStream>() {
-            public InputStream run() {
-                ClassLoader threadCL = Thread.currentThread().getContextClassLoader();
-                if (threadCL != null) {
-                    return threadCL.getResourceAsStream(CONFIGURATION_FILE);
-                } else {
-                    return ClassLoader.getSystemResourceAsStream(CONFIGURATION_FILE);
-                }
-            }
-        });
+        ClassLoader threadCL = Thread.currentThread().getContextClassLoader();
+        InputStream in = null;
+        if (threadCL != null) {
+            in = threadCL.getResourceAsStream(CONFIGURATION_FILE);
+        } else {
+            in = ClassLoader.getSystemResourceAsStream(CONFIGURATION_FILE);
+        }
+        
         if (null != in) {
             try {
                 SIMPLE_LOGGER_PROPS.load(in);

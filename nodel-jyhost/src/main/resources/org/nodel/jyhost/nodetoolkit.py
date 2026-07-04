@@ -1,361 +1,459 @@
-from sys import nodetoolkit
+"""
+Nodel Toolkit for GraalVM Python
 
-# This scripting toolkit is injected into the 
-# scripting environment.
-# 
-# It contains convenience utilities and classes.
+This module provides the interface between Python scripts and the Nodel framework.
+The Java toolkit is injected as '_toolkit' before this module loads.
+"""
 
-# Represents a template for a local event
-def LocalEvent(schemaDictOrJSONorTitle = None):
-    return schemaDictOrJSONorTitle;
+# First, verify our toolkit is present
+if '_toolkit' not in globals():
+    raise RuntimeError("Nodel toolkit not properly initialized. '_toolkit' missing.")
 
-# Represents a template for a local action
-def RemoteAction(schemaDictOrJSONorTitle = None):
-    return schemaDictOrJSONorTitle;
+# Set up Java import system first - this enables importing Java classes
+import sys
+import inspect
+from dataclasses import dataclass
+from typing import Any, Optional, Callable, Dict, List, Union
+from importlib.abc import MetaPathFinder, Loader
+from importlib.util import spec_from_loader
+from java import type as jtype
 
-# Represents a template for a parameter
-def Parameter(schemaDictOrJSONorTitle = None):
-    return schemaDictOrJSONorTitle;
+class JavaPackage:
+    """Represents a Java package"""
+    def __init__(self, toolkit, name):
+        self._toolkit = toolkit
+        self._name = name
 
-# nodetoolkit: Native toolkit (injected)
-_toolkit = nodetoolkit
+        # Add required module attributes
+        self.__name__ = name
+        self.__package__ = name
+        self.__path__ = []  # Empty list indicates it's a package
+        self.__loader__ = None
 
-# A general console with:
-# .log(...)    - light verbose text
-# .info(...)   - blue text
-# .error(...)  - red text
-# .warn(...)   - orange text
-console = nodetoolkit.getConsole()
+    def __getattr__(self, name):
+        fullname = f"{self._name}.{name}"
 
+        # First try loading as a class
+        try:
+            # Use GraalPy Java interop to get the class
+            cls = jtype(fullname)              # returns a Class or raises
+        except Exception: # Catch any exception (e.g. if it's a package)
+            cls = None
 
-# Simple JSON encoder
-def json_encode(obj):
-  return nodetoolkit.jsonEncode(obj)
+        if cls is None:
+             # If not a class or import failed, return a new package
+            return JavaPackage(self._toolkit, fullname)
+        else:
+             # otherwise we have a genuine class
+             return cls
 
-# Simple JSON decoder
-def json_decode(json):
-  return nodetoolkit.jsonDecode(json)
+class JavaClassLoader(Loader):
+    """Loads Java classes and packages"""
+    def __init__(self, toolkit, fullname):
+        self.toolkit = toolkit
+        self.fullname = fullname
 
-# Tests whether two objects are effectively the same value (safely deeply inspects both objects)
-# (collections, arrays, maps, dicts sets, etc. are all normalised and made "comparable" where possible)
-def same_value(obj1, obj2):
-  return nodetoolkit.sameValue(obj1, obj2)
+    def create_module(self, spec):
+        # First check if it's a final class name
+        try:
+            cls = jtype(self.fullname)              # returns a Class or raises
+        except Exception:
+            cls = None
 
-# Schedules a function to be called immediately or delayed
-def call(func, delay=0, complete=None, error=None):
-  nodetoolkit.call(False, func, long(delay*1000), complete, error)
+        if cls is None:
+            # treat as package
+            return JavaPackage(self.toolkit, self.fullname)
 
-# DEPRECATED (use 'call' and optional args)
-def call_delayed(delay, func, complete=None, error=None):
-  nodetoolkit.call(False, func, long(delay*1000), complete, error)
+        # otherwise we have a genuine class
+        cls.__name__ = self.fullname
+        cls.__package__ = self.fullname.rpartition('.')[0]
+        return cls
 
-# Schedules a function to be called in a thread-safe manner
-def call_safe(func, delay=0, complete=None, error=None):
-  nodetoolkit.call(True, func, long(delay*1000), complete, error)
-
-# Returns an atomically incrementing long integer.  
-def next_seq():
-    return nodetoolkit.nextSequenceNumber()
-
-# Returns a high-precision atomically incrementing clock in milliseconds
-def system_clock():
-    return nodetoolkit.systemClockInMillis();
-
-# Note: for DateTime functions:
-#
-#   now = date_now()
-#   now2 = date_at(now.getYear(), now.getMonthOfYear(), now.getDayOfMonth(), now.getHourOfDay(), now.getMinuteOfHour(), now.getSecondOfMinute(), now.getMillisOfSecond())
-#
-#   now == now2 (is True)
-#
-# (for instant.toString(pattern), see http://www.joda.org/joda-time/apidocs/org/joda/time/format/DateTimeFormat.html)
- 
-# 'now' timestamp (based on excellent JODATIME library)
-def date_now():
-    return nodetoolkit.dateNow()
-
-# a timestamp at another time (based on excellent JODATIME library)
-def date_at(year, month, day, hour, minute, second=0, millisecond=0):
-    return nodetoolkit.dateAt(year, month, day, hour, minute, second, millisecond)
-   
-# a timestamp based on a millisecond offset (JODATIME library)
-def date_instant(millis):
-    return nodetoolkit.dateAtInstant(millis)
-
-# parses a date string e.g. '2016-06-13T08:17:11.836-04:00'
-def date_parse(s):
-    return nodetoolkit.parseDate(s)
-
-# Simple URL retriever (supports POST) where 'query' and 'headers' are dictionaries. 
-# If 'fullResponse', result is an object which includes 'statusCode', 'reason', 'content' and attributes made up of the response HTTP headers
-def get_url(url, method=None, query=None, username=None, password=None, headers=None, contentType=None, post=None, connectTimeout=10, readTimeout=15, fullResponse=False):
-  if fullResponse:
-    return nodetoolkit.getHttpClient().makeRequest(url, method, query, username, password, headers, contentType, post, long(connectTimeout*1000), long(readTimeout*1000))
-  else:
-    return nodetoolkit.getHttpClient().makeSimpleRequest(url, method, query, username, password, headers, contentType, post, long(connectTimeout*1000), long(readTimeout*1000))
-  
-# For HTTP proxy use, call this before any other HTTP client operations: 
-#     _toolkit.getHttpClient().setProxy("PROXY_HOST:PORT_PORT", USERNAME or None, PASSWORD or None)
-
-# To ignore HTTPS certificate verification:
-#     _toolkit.getHttpClient().setIgnoreSSL(True)
-
-# DEPRECATED (same as above)
-def getURL(url, method=None, query=None, username=None, password=None, headers=None, contentType=None, post=None, connectTimeout=10, readTimeout=15):
-  return nodetoolkit.getHttpClient().makeSimpleRequest(url, method, query, username, password, headers, contentType, post, long(connectTimeout*1000), long(readTimeout*1000))
-
-# A managed TCP connection that attempts to stay open (includes instrumentation)
-def TCP(dest=None, connected=None, received=None, sent=None, disconnected=None, timeout=None, sendDelimiters='\n', receiveDelimiters='\r\n', binaryStartStopFlags=None):
-  return nodetoolkit.createTCP(dest, connected, received, sent, disconnected, timeout, sendDelimiters, receiveDelimiters, binaryStartStopFlags)
-
-# A managed UDP connection for sending or receiving UDP (includes instrumentation)
-def UDP(source='0.0.0.0:0', dest=None, ready=None, received=None, sent=None, intf=None):
-  return nodetoolkit.createUDP(source, dest, ready, received, sent, intf)
-
-# A managed SSH connection ('shell' mode) for executing commands (includes instrumentation)
-# (see https://github.com/museumsvictoria/nodel/wiki/Scripting-Toolkit:-SSH-usage)
-def SSH(dest=None, connected=None, received=None, sent=None, disconnected=None, timeout=None, sendDelimiters='\n', receiveDelimiters='\r\n',
-        username=None, password=None, echoDisabled=False):
-  return nodetoolkit.createSSH(dest, connected, received, sent, disconnected, timeout, sendDelimiters, receiveDelimiters, username, password, echoDisabled)
-  
-# A managed processes that attempts to stay executed (includes instrumentation)
-def Process(command, # the command line and arguments
-           # callbacks
-           started=None,   # everytime the process is started
-           stdout=None,    # stdout handler
-           stdin=None,     # feedback when .send is called (for convenience) 
-           stderr=None,    # stderr handler
-           stopped=None,   # when the process is stops / stopped
-           timeout=None,   # timeout when a request is issued but not response
-           # arguments
-           sendDelimiters='\n', receiveDelimiters='\r\n', # default delimiters
-           working=None,   # working directory
-           mergeErr=False, # merge  stderr into the stdout for convenience
-           env=None):      # add/set environment variables (dict)
-  return nodetoolkit.createProcess(command, 
-                                started, stdout, stdin, stderr, stopped, timeout, sendDelimiters, receiveDelimiters,
-                                working, mergeErr, env)
-
-# Creates a short-living process (still managed)
-def quick_process(command,
-                  stdinPush=None, # text to push to stdin
-                  started=None,   # a callback where arg is OS process ID
-                  finished=None,  # single callback argument with these properties:
-                                  #   'code': The exit code (or null in timed out)
-                                  #   'stdout': The complete stdout capture
-                                  #   'stderr': The complete stderr capture (if not merged)
-                  timeoutInSeconds=0, # if positive, kills the process on timeout
-                  working=None,   # the working directory
-                  mergeErr=False, # merge  stderr into the stdout for convenience
-                  env=None):      # add/set environment variables (dict)
-    return nodetoolkit.createQuickProcess(command, stdinPush, 
-                                       started, finished, 
-                                       long(timeoutInSeconds * 1000), working, mergeErr, env)
-
-# create a safe request queue for mixing asynchronous and synchronous programming.
-# e.g. 
-# queue = request_queue()
-#
-# def udp_received(source, data):
-#     queue.handle((source, data))
-#
-# queue.request(lambda: udp.send('?'), lambda arg: console.info('RECV UDP %s' % arg)) 
-def request_queue(received=None, sent=None, timeout=None):
-    return nodetoolkit.createRequestQueue(received, sent, timeout)
-
-# A general purpose timer class for repeating timers
-class Timer:
-  def __init__(self, func, intervalInSeconds, firstDelayInSeconds=0, stopped=False):
-      self.wrapper = nodetoolkit.createTimer(func, long(firstDelayInSeconds * 1000), long(intervalInSeconds * 1000), stopped)
-      
-  def setDelayAndInterval(self, delayInSeconds, intervalInSeconds):
-      self.wrapper.setDelayAndInterval(long(delayInSeconds * 1000), long(intervalInSeconds * 1000))
-      
-  def setInterval(self, seconds):
-      self.wrapper.setInterval(long(seconds * 1000))
-      
-  def setDelay(self, seconds):
-      self.wrapper.setDelay(long(seconds * 1000))
-      
-  def reset(self):
-      self.wrapper.reset()
-      
-  def start(self):
-      self.wrapper.start()
-      
-  def stop(self):
-      self.wrapper.stop()      
-      
-  def getDelay(self):
-      return self.wrapper.getDelay() / 1000.0
-  
-  def getInterval(self):
-      return self.wrapper.getInterval() / 1000.0
-  
-  def isStarted(self):
-      return self.wrapper.isStarted()
-  
-  def isStopped(self):
-      return self.wrapper.isStopped()
-
-# Create a node (on-the-fly)
-def Node(nodeName):
-    return nodetoolkit.createNode(nodeName)
-
-# Creates a node based on the name of an existing node (on-the-fly)
-def Subnode(baseName):
-    return nodetoolkit.createSubnode(baseName)
-  
-# Releases a node created with Node() or Subnode() and related resources.
-def release_node(node):
-  return nodetoolkit.releaseNode(node)
-
-# DEPRECATED (see above)  
-def releaseNode(node):
-  return nodetoolkit.releaseNode(node)
-
-# Creates a local signal (on-the-fly)
-# RESERVED FOR FUTURE DIFFERENTIATION FROM EVENT
-def Signal(name, metadata=None):
-    return nodetoolkit.createEvent(name, metadata)
-
-# (see Signal)
-# DEPRECATED - use 'create_local_event' or '@local_event'
-def Event(name, metadata=None):
-    return nodetoolkit.createEvent(name, metadata)
-
-# create a local event
-def create_local_event(name, metadata=None):
-  return nodetoolkit.createEvent(name, metadata)
-  
-# Creates a local action (on-the-fly)    
-# DEPRECATED - use 'create_local_action' or '@local_action'
-def Action(name, handler, metadata=None):
-  return nodetoolkit.createAction(name, handler, metadata)
-
-# creates a local action
-def create_local_action(name, handler, metadata=None):
-  return nodetoolkit.createAction(name, handler, metadata)
-  
-# Creates remote action
-def create_remote_action(name, metadata=None, suggestedNode=None, suggestedAction=None):
-    return nodetoolkit.createRemoteAction(name, metadata, suggestedNode, suggestedAction)
-    
-# Creates a remote event
-def create_remote_event(name, handler, metadata=None, suggestedNode=None, suggestedEvent=None):
-    return nodetoolkit.createRemoteEvent(name, handler, metadata, suggestedNode, suggestedEvent)
-
-# Function decorators for convenience
-# (Tag functions with '@___')
-def local_action(metadata):
-  def wrap(handler):
-    if handler.func_code.co_argcount == 0:
-      return nodetoolkit.createAction(handler.func_name, lambda arg: handler(), metadata)
-    else:
-      return nodetoolkit.createAction(handler.func_name, handler, metadata)
-
-  return wrap
-
-def remote_event(metadata, suggestedNode=None, suggestedEvent=None):
-  def wrap(handler):
-    if handler.func_code.co_argcount == 0:
-      return nodetoolkit.createRemoteEvent(handler.func_name, lambda arg: handler(), metadata, suggestedNode, suggestedEvent)
-    else:
-      return nodetoolkit.createRemoteEvent(handler.func_name, handler, metadata, suggestedNode, suggestedEvent)
-
-  return wrap
-
-
-# <!-- Look up functions
-
-# Looks up a local action by simple name
-def lookup_local_action(name):
-    return nodetoolkit.getLocalAction(name)
-
-# Looks up a local event by simple name
-def lookup_local_event(name):
-    return nodetoolkit.getLocalEvent(name)
-    
-# Looks up a remote action by simple name
-def lookup_remote_action(name):
-    return nodetoolkit.getRemoteAction(name)
-
-# Looks up a remote event by simple name
-def lookup_remote_event(name):
-    return nodetoolkit.getRemoteEvent(name)
-
-# Looks up a parameter by simple name
-def lookup_parameter(name):
-    return nodetoolkit.lookupParameter(name)
-
-    
-# NODE LIFE-CYCLE FUNCTIONS:
-
-# for functions to be called before main has executed
-_nodel_beforeMainFunctions = []
-
-def processBeforeMainFunctions():
-    for f in _nodel_beforeMainFunctions:
-        f()
-        
-    return len(_nodel_beforeMainFunctions)
-
-# decorates functions that should be called after 'main' completes
-def before_main(f):
-    _nodel_beforeMainFunctions.append(f)
-
-    return f
-
-  
-# for functions to be called after main has executed
-_nodel_afterMainFunctions = []
-
-def processAfterMainFunctions():
-    for f in _nodel_afterMainFunctions:
-        f()
-        
-    return len(_nodel_afterMainFunctions)
-
-# decorates functions that should be called after 'main' completes
-def after_main(f):
-    _nodel_afterMainFunctions.append(f)
-
-    return f
-
-# for functions to be called at cleanup (shutdown, restart, etc.)
-_nodel_atCleanupFunctions = []
-
-def processCleanupFunctions():
-    for f in _nodel_atCleanupFunctions:
-      try:
-        f()
-      except:
-        # ignore
+    def exec_module(self, module):
+        # Nothing to execute for Java classes/packages
         pass
-        
-    return len(_nodel_atCleanupFunctions)
 
-# decorates functions that should be called at cleanup (shutdown, restart, etc.)
-def at_cleanup(f):
-    _nodel_atCleanupFunctions.append(f)
+class JavaImportFinder(MetaPathFinder):
+    """Finds Java packages and classes during import"""
+    def __init__(self, toolkit):
+        self.toolkit = toolkit
+        # Define allowed root packages for security
+        self.roots = {'org', 'java', 'com', 'javax'} # Add other roots as needed
 
-    return f
+    def find_spec(self, fullname, path, target=None):
+        parts = fullname.split('.')
+        if parts[0] in self.roots:
+            # If the root package is allowed, return a spec. 
+            # The loader (JavaClassLoader) will handle the actual resolution 
+            # and raise an error if the type/package doesn't exist.
+            return spec_from_loader(
+                 fullname,
+                 JavaClassLoader(self.toolkit, fullname)
+            )
+        return None
 
-# CONVENIENCE FUNCTIONS
+# Install the Java import hook immediately
+sys.meta_path.insert(0, JavaImportFinder(_toolkit))
 
-# a convenient constant that can be used against most objects (arrays, dicts, sets, strings, etc.)
-from org.nodel.jyhost.PyToolkit import EmptyDict as EMPTY
+# --- Compatibility shim for console module import -----------------
+import types, sys
 
-# Returns true if a string is blank (null, empty or all simple white-space incl. tab, CR, LN)
-from org.nodel.Strings import isBlank as is_blank
+# Get the console from the toolkit for direct use
+java_console = _toolkit.getConsole() if hasattr(_toolkit, "getConsole") else None
 
-# Returns false if there is at least one item within 'o', true otherwise
-def is_empty(obj):
-  return obj == None or len(obj) == 0
+# Create an enhanced console wrapper that can handle both patterns
+class EnhancedConsole:
+    def __init__(self, java_console):
+        self._java_console = java_console
+        # Add self-reference for legacy code pattern
+        self.instance = self
+    def log(self, message):
+        self._java_console.log(str(message))
+    def info(self, message):
+        self._java_console.info(str(message))
+    def warn(self, message):
+        self._java_console.warn(str(message))
+    def error(self, message):
+        self._java_console.error(str(message))
 
+# Create the wrapper instance
+console_wrapper = EnhancedConsole(java_console)
 
+# 1. Create a fake module called 'console'
+console_mod = types.ModuleType("console")
+console_mod.instance = console_wrapper  # Set wrapper as module's 'instance' attribute
+sys.modules["console"] = console_mod    # Make 'import console' work
 
-# CONVENIENCE DEPENDENCIES
+# 2. Set the global 'console' to the same wrapper
+console = console_wrapper
 
-# JWTs (JSON Web Tokens) 
-# see https://github.com/museumsvictoria/nodel/discussions/297
+# Make the console visible to all modules
+import builtins
+builtins.console = console_wrapper          # For direct console.info() calls
+builtins.console.instance = console_wrapper # For console.instance.info() calls
+
+print("Nodel toolkit loaded - enhanced console bridge established")
+
+# Expose version info if available
+VERSION = getattr(_toolkit, 'VERSION', 'unknown')
+
+@dataclass
+class EventMetadata:
+    """Metadata structure for events"""
+    title: Optional[str] = None
+    desc: Optional[str] = None
+    group: Optional[str] = None
+    order: Optional[float] = None
+    schema: Optional[Dict] = None
+
+def _process_metadata(metadata: Union[str, Dict, EventMetadata, None]) -> Dict:
+    """Convert various metadata formats into a standard dictionary"""
+    if metadata is None:
+        return {}
+    if isinstance(metadata, str):
+        return {'title': metadata}
+    if isinstance(metadata, EventMetadata):
+        return {k: v for k, v in metadata.__dict__.items() if v is not None}
+    return metadata
+
+def LocalEvent(metadata: Union[str, Dict, EventMetadata, None] = None) -> Dict:
+    """
+    Create metadata for a local event.
+
+    Args:
+        metadata: Event metadata as string (title), dict, or EventMetadata
+
+    Returns:
+        Dict containing processed metadata
+    """
+    return _process_metadata(metadata)
+
+def RemoteAction(metadata: Union[str, Dict, EventMetadata, None] = None) -> Dict:
+    """Create metadata for a remote action"""
+    return _process_metadata(metadata)
+
+def Parameter(metadata: Union[str, Dict, EventMetadata, None] = None) -> Dict:
+    """Create metadata for a parameter"""
+    return _process_metadata(metadata)
+
+# Timer functionality
+class Timer:
+    """
+    A managed timer that can execute functions periodically
+    """
+    def __init__(self, func: Callable,
+                 interval_seconds: float,
+                 first_delay_seconds: float = 0,
+                 stopped: bool = False):
+        """
+        Create a new timer
+
+        Args:
+            func: Function to call
+            interval_seconds: Time between calls
+            first_delay_seconds: Initial delay before first call
+            stopped: Whether to start in stopped state
+        """
+        self.wrapper = _toolkit.createTimer(
+            func,
+            int(first_delay_seconds * 1000),
+            int(interval_seconds * 1000),
+            stopped
+        )
+
+    def set_delay_and_interval(self, delay_seconds: float, interval_seconds: float) -> None:
+        """Update both delay and interval"""
+        self.wrapper.setDelayAndInterval(
+            int(delay_seconds * 1000),
+            int(interval_seconds * 1000)
+        )
+
+    def set_interval(self, seconds: float) -> None:
+        """Set new interval between calls"""
+        self.wrapper.setInterval(int(seconds * 1000))
+
+    def set_delay(self, seconds: float) -> None:
+        """Set new initial delay"""
+        self.wrapper.setDelay(int(seconds * 1000))
+
+    def reset(self) -> None:
+        """Reset the timer"""
+        self.wrapper.reset()
+
+    def start(self) -> None:
+        """Start the timer"""
+        self.wrapper.start()
+
+    def stop(self) -> None:
+        """Stop the timer"""
+        self.wrapper.stop()
+
+    @property
+    def delay(self) -> float:
+        """Current delay in seconds"""
+        return self.wrapper.getDelay() / 1000.0
+
+    @property
+    def interval(self) -> float:
+        """Current interval in seconds"""
+        return self.wrapper.getInterval() / 1000.0
+
+    @property
+    def is_started(self) -> bool:
+        """Whether timer is running"""
+        return self.wrapper.isStarted()
+
+    @property
+    def is_stopped(self) -> bool:
+        """Whether timer is stopped"""
+        return self.wrapper.isStopped()
+
+# Action/Event Creation Functions
+def create_local_action(name: str, handler: Callable, metadata: Any = None):
+    """Create a local action that other nodes can call"""
+    return _toolkit.createAction(name, handler, _process_metadata(metadata))
+
+def create_local_event(name: str, metadata: Any = None):
+    """Create a local event that can be emitted"""
+    return _toolkit.createEvent(name, _process_metadata(metadata))
+
+def create_remote_action(name: str, metadata: Any = None,
+                        suggested_node: str = None, suggested_action: str = None):
+    """Create a remote action that calls another node"""
+    return _toolkit.createRemoteAction(name, _process_metadata(metadata),
+                                     suggested_node, suggested_action)
+
+def create_remote_event(name: str, handler: Callable, metadata: Any = None,
+                       suggested_node: str = None, suggested_event: str = None):
+    """Create a remote event that listens to another node"""
+    return _toolkit.createRemoteEvent(name, handler, _process_metadata(metadata),
+                                    suggested_node, suggested_event)
+
+# Decorator Support
+def local_action(metadata: Any = None):
+    """Decorator to create a local action"""
+    def decorator(handler: Callable):
+        sig = inspect.signature(handler)
+        if len(sig.parameters) == 0:
+            return _toolkit.createAction(
+                handler.__name__,
+                lambda arg: handler(),
+                _process_metadata(metadata)
+            )
+        return _toolkit.createAction(
+            handler.__name__,
+            handler,
+            _process_metadata(metadata)
+        )
+    return decorator
+
+def remote_event(metadata: Any = None, suggested_node: str = None,
+                suggested_event: str = None):
+    """Decorator to create a remote event handler"""
+    def decorator(handler: Callable):
+        sig = inspect.signature(handler)
+        if len(sig.parameters) == 0:
+            return _toolkit.createRemoteEvent(
+                handler.__name__,
+                lambda arg: handler(),
+                _process_metadata(metadata),
+                suggested_node,
+                suggested_event
+            )
+        return _toolkit.createRemoteEvent(
+            handler.__name__,
+            handler,
+            _process_metadata(metadata),
+            suggested_node,
+            suggested_event
+        )
+    return decorator
+
+# Network Functions
+def TCP(*args, dest=None, connected=None, received=None, sent=None,
+        disconnected=None, timeout=None, send_delimiters='\n',
+        receive_delimiters='\r\n', binary_start_stop_flags=None):
+    """Create a managed TCP connection"""
+    # Handle both positional and keyword arguments
+    if args:
+        dest = args[0] if len(args) > 0 else dest
+
+    return _toolkit.createTCP(dest, connected, received, sent, disconnected,
+                            timeout, send_delimiters, receive_delimiters,
+                            binary_start_stop_flags)
+
+def UDP(source: str = '0.0.0.0:0',
+        dest: Optional[str] = None,
+        ready: Optional[Callable] = None,
+        received: Optional[Callable] = None,
+        sent: Optional[Callable] = None,
+        intf: Optional[str] = None):
+    """Create a managed UDP connection"""
+    return _toolkit.createUDP(source, dest, ready, received, sent, intf)
+
+# Utility Functions
+def json_encode(obj: Any) -> str:
+    """Encode object as JSON string"""
+    return _toolkit.toJson(obj)
+
+def json_decode(json_str: str) -> Any:
+    """Decode JSON string to object"""
+    return _toolkit.fromJson(json_str)
+
+def same_value(obj1: Any, obj2: Any) -> bool:
+    """Deep comparison of two values"""
+    return _toolkit.sameValue(obj1, obj2)
+
+def is_empty(obj: Any) -> bool:
+    """Check if object is empty"""
+    return obj is None or len(obj) == 0
+
+def call(func: Callable, delay: float = 0,
+         complete: Optional[Callable] = None,
+         error: Optional[Callable] = None) -> None:
+    """Schedule a function call"""
+    _toolkit.call(False, func, int(delay * 1000), complete, error)
+
+def call_safe(func: Callable, delay: float = 0,
+              complete: Optional[Callable] = None,
+              error: Optional[Callable] = None) -> None:
+    """Schedule a thread-safe function call"""
+    _toolkit.call(True, func, int(delay * 1000), complete, error)
+
+# Node Management
+_nodel_before_main_functions: List[Callable] = []
+_nodel_after_main_functions: List[Callable] = []
+_nodel_cleanup_functions: List[Callable] = []
+
+def before_main(func: Callable) -> Callable:
+    """Register function to run before main"""
+    _nodel_before_main_functions.append(func)
+    return func
+
+def after_main(func: Callable) -> Callable:
+    """Register function to run after main"""
+    _nodel_after_main_functions.append(func)
+    return func
+
+def at_cleanup(func: Callable) -> Callable:
+    """Register function to run during cleanup"""
+    _nodel_cleanup_functions.append(func)
+    return func
+
+def process_before_main_functions() -> int:
+    """Execute all before_main functions"""
+    for func in _nodel_before_main_functions:
+        func()
+    return len(_nodel_before_main_functions)
+
+def process_after_main_functions() -> int:
+    """Execute all after_main functions"""
+    for func in _nodel_after_main_functions:
+        func()
+    return len(_nodel_after_main_functions)
+
+def process_cleanup_functions() -> int:
+    """Execute all cleanup functions"""
+    count = 0
+    for func in _nodel_cleanup_functions:
+        try:
+            func()
+            count += 1
+        except Exception as e:
+            console.warn(f"Cleanup function failed: {e}")
+    return count
+
+# --- Lookup Functions ---
+def lookup_local_action(name):
+    """Find a local action by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupLocalAction(name)
+
+def lookup_local_event(name):
+    """Find a local event by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupLocalEvent(name)
+
+def lookup_remote_action(name):
+    """Find a remote action by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupRemoteAction(name)
+
+def lookup_remote_event(name):
+    """Find a remote event by name."""
+    if not _toolkit:
+        raise RuntimeError("Toolkit not properly initialized")
+    return _toolkit.lookupRemoteEvent(name)
+
+# Make commonly used items available at module level
+__all__ = [
+    'console',
+    'Timer',
+    'LocalEvent',
+    'RemoteAction',
+    'Parameter',
+    'create_local_action',
+    'create_local_event',
+    'create_remote_action',
+    'create_remote_event',
+    'local_action',
+    'remote_event',
+    'TCP',
+    'UDP',
+    'call',
+    'call_safe',
+    'json_encode',
+    'json_decode',
+    'same_value',
+    'is_empty',
+    'before_main',
+    'after_main',
+    'at_cleanup',
+    'lookup_local_action',
+    'lookup_local_event',
+    'lookup_remote_action',
+    'lookup_remote_event',
+]

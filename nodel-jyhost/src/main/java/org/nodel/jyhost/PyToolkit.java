@@ -1,42 +1,54 @@
 package org.nodel.jyhost;
 
-import org.python.core.Py;
-import org.python.core.PyDictionary;
-import org.python.core.PyObject;
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Value;
 
 /**
- * This class is reserved for any (Jy)Python-Java interfacing.
+ * This class provides Python-Java interfacing using GraalVM.
  */
 public class PyToolkit {
     
-    private static class FrozenDict extends PyDictionary {
-        
-        private static final long serialVersionUID = 1L;
+    private static Context pythonContext;
+    private static Value mappingProxyType;
 
-        @Override
-        public void __setitem__(int key, PyObject value) {
-            throw Py.TypeError(String.format("object does not support item assignment", getType().fastGetName()));
-        }
-        
-        @Override
-        public void __setitem__(PyObject key, PyObject value) {
-            throw Py.TypeError(String.format("object does not support item assignment", getType().fastGetName()));
-        }
-        
-        @Override
-        public void __setitem__(String key, PyObject value) {
-            throw Py.TypeError(String.format("object does not support item assignment", getType().fastGetName()));
-        }
-        
-        @Override
-        public void __delitem__(PyObject key) {
-            throw Py.TypeError(String.format("object has no items", getType().fastGetName()));
-        }
-    }
-    
     /**
      * A convenient immutable constant for sharing.
      */
-    public final static FrozenDict EmptyDict = new FrozenDict();
+    public final static Value EmptyDict;
+
+    static {
+        pythonContext = Context.newBuilder("python")
+                              .allowAllAccess(true)
+                              .build();
+
+        // Get MappingProxyType from Python's types module
+        pythonContext.eval("python", "from types import MappingProxyType");
+        mappingProxyType = pythonContext.eval("python", "MappingProxyType");
+
+        // Create an empty Python dictionary to pass to MappingProxyType
+        Value emptyDict = pythonContext.eval("python", "{}");
+
+        // Now create an immutable view of the empty dictionary
+        EmptyDict = mappingProxyType.newInstance(emptyDict);
+        // Alternative one-liner approach:
+        // EmptyDict = pythonContext.eval("python", "MappingProxyType({})");
+    }
     
+    /**
+     * Creates a new Python context with full access
+     */
+    public static Context createContext() {
+        return Context.newBuilder("python")
+                     .allowAllAccess(true)
+                     .build();
+    }
+    
+    /**
+     * Cleanup resources
+     */
+    public static void shutdown() {
+        if (pythonContext != null) {
+            pythonContext.close();
+        }
+    }
 }

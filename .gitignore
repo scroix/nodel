@@ -45,3 +45,8 @@ out/
 # Visual Studio Code
 .vscode/
 *.code-workspace
+.aider*
+
+# Gradle build files
+**/build/reports/problems/
+**/.DS_Store

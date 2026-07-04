@@ -64,7 +64,7 @@ public class Timers {
      * Constructs a new timer thread.
      */
     public Timers(String name) {
-        if (Strings.isNullOrEmpty(name))
+        if (name == null || name.isEmpty())
             throw new IllegalArgumentException("The timer name cannot be empty; prefix with '_' to avoid registering with diagnostics framework.");
 
         this.name = name;

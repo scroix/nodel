@@ -46,7 +46,7 @@ public abstract class AutoDNS implements Closeable {
         
         String impl = System.getProperty(IMPL_SYSTEMPROP);
 
-        if (!Strings.isNullOrEmpty(impl)) {
+        if (!(impl == null || impl.isEmpty())) {
             // attempt to use alternative implementation
             try {
                 String[] parts = impl.split(";");
@@ -54,13 +54,13 @@ public abstract class AutoDNS implements Closeable {
                 // class name 
                 String className = parts[0].trim();
 
-                if (Strings.isNullOrEmpty(className))
+                if (className == null || className.isEmpty())
                     throw new RuntimeException("No class-name was provided");
                 
                 // access method
                 String methodName = (parts.length > 1 ? parts[1].trim() : null);
 
-                if (Strings.isNullOrEmpty(methodName))
+                if (methodName == null || methodName.isEmpty())
                     methodName = IMPL_DEFAULT_METHOD;
 
                 // resolve class

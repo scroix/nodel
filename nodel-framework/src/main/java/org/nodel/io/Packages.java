@@ -13,6 +13,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.Map;
@@ -54,7 +56,7 @@ public class Packages {
                 url0 = packageURL;
             }
             
-            URL url = new URL(url0);
+            URL url = URI.create(url0).toURL();
             String path = url.getPath();
             String fileName = new File(path).getName();
             

@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.nodel.SimpleName;
-import org.nodel.Strings;
 import org.nodel.host.RemoteBindingValues.ActionValue;
 import org.nodel.host.RemoteBindingValues.EventValue;
 import org.nodel.json.JSONException;
@@ -121,10 +120,10 @@ public class RemoteBindings {
             
             ActionValue actionState = new ActionValue();
             
-            if (!Strings.isNullOrEmpty(actionInfo.node))
+            if (!(actionInfo.node == null || actionInfo.node.isEmpty()))
                 actionState.node = new SimpleName(actionInfo.node);
 
-            if (!Strings.isNullOrEmpty(actionInfo.action))
+            if (!(actionInfo.action == null || actionInfo.action.isEmpty()))
                 actionState.action = new SimpleName(actionInfo.action);
             
             actionsSection.put(actionName.getOriginalName(), actionState);
@@ -138,10 +137,10 @@ public class RemoteBindings {
             
             EventValue eventState = new EventValue();
             
-            if (!Strings.isNullOrEmpty(eventInfo.node))
+            if (!(eventInfo.node == null || eventInfo.node.isEmpty()))
                 eventState.node = new SimpleName(eventInfo.node);
 
-            if (!Strings.isNullOrEmpty(eventInfo.event))
+            if (!(eventInfo.event == null || eventInfo.event.isEmpty()))
                 eventState.event = new SimpleName(eventInfo.event);
             
             eventsSection.put(actionName.getOriginalName(), eventState);            

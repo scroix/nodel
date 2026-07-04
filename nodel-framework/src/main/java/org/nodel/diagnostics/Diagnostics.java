@@ -94,12 +94,7 @@ public class Diagnostics {
         // use a completely independent thread to avoid debugging clashes
         
         // (don't bother if we can't create thread, e.g. Google App Engine environment)
-        SecurityManager securityManager = System.getSecurityManager();
-        
         try {
-            if (securityManager != null)
-                securityManager.checkPermission(new RuntimePermission("modifyThreadGroup"));
-
             _thread = new Thread(new Runnable() {
 
                 @Override
@@ -116,8 +111,7 @@ public class Diagnostics {
             _thread.setDaemon(true);
             _thread.start();
         } catch (Exception exc) {
-            String suffix = (securityManager == null ? " (no security manager was present to test against but tried anyway)" : " (tested against a security manager)"); 
-                    
+            String suffix = " (security manager checks removed)";
             _logger.warn("This runtime did not allow the creation of threads; this may or may not present a problem. Will continue..." + suffix);
         }
 

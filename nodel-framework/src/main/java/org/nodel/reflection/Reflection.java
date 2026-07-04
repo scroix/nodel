@@ -313,11 +313,11 @@ public class Reflection {
                     desc = safeGetterAsString(descLookup, constant);
                 
                 // overwrite the title if one has been provided
-                if (!Strings.isNullOrEmpty(title))
+                if (!(title == null || title.isEmpty()))
                     enumInfo.title = title;
                 
                 // add the description if one has been provided
-                if (!Strings.isNullOrEmpty(desc))
+                if (!(desc == null || desc.isEmpty()))
                     enumInfo.desc = desc;
                 
                 enumConstantMap.put(constant, enumInfo);
@@ -325,7 +325,7 @@ public class Reflection {
                 enumConstantMapByName.put(new SimpleName(constant.toString()), enumInfo);
                 
                 // also map by the title if it's present (would be different to constant) 
-                if (!Strings.isNullOrEmpty(title))
+                if (!(title == null || title.isEmpty()))
                     enumConstantMapByName.put(new SimpleName(title), enumInfo);
                 
                 enumInfosList.add(enumInfo);
@@ -412,7 +412,7 @@ public class Reflection {
         ValueInfo fieldInfo = new ValueInfo(valueAnnotation);
 
         // fallback to the field/method name if the annotated name is left unspecified.
-        if (Strings.isNullOrEmpty(fieldInfo.name))
+        if (fieldInfo.name == null || fieldInfo.name.isEmpty())
             fieldInfo.name = member.getName();
         
         fieldInfo.member = (actualMember == null ? member : actualMember);
@@ -448,7 +448,7 @@ public class Reflection {
             return false;
 
         ServiceInfo serviceInfo;
-        if (Strings.isNullOrEmpty(serviceAnnotation.name()))
+        if (serviceAnnotation.name() == null || serviceAnnotation.name().isEmpty())
             serviceInfo = new ServiceInfo(member.getName(), serviceAnnotation);
         else
             serviceInfo = new ServiceInfo(serviceAnnotation.name(), serviceAnnotation);
@@ -566,9 +566,14 @@ public class Reflection {
      */
     public static Object createDefaultInstance(Class<?> klass) {
         try {
-            Object result = klass.newInstance();
-            
+            Constructor<?> constructor = klass.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            Object result = constructor.newInstance();
             return result;
+        } catch (NoSuchMethodException e) {
+            return null;
+        } catch (InvocationTargetException e) {
+            return null;
         } catch (IllegalArgumentException e) {
             return null;
         } catch (InstantiationException e) {

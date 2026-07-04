@@ -7,6 +7,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
+import java.net.NetworkInterface;
+import java.net.StandardSocketOptions;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Random;
@@ -417,7 +419,7 @@ public class ManagedUDP implements Closeable {
             // lazily resolve source, dest and intf addresses looking for multicast requirements
         	
         	InetSocketAddress sourceSocketAddress = null;
-        	if (!Strings.isNullOrEmpty(sourceAddress)) {
+        	if (!(sourceAddress == null || sourceAddress.isEmpty())) {
         		sourceSocketAddress = parseAndResolveAddress(sourceAddress);
         		InetAddress addressPart = sourceSocketAddress.getAddress(); // (can be null if unresolved)
         		if (addressPart != null && addressPart.isMulticastAddress())
@@ -425,7 +427,7 @@ public class ManagedUDP implements Closeable {
         	}
             
             InetSocketAddress destSocketAddress = null;
-            if (!Strings.isNullOrEmpty(destAddress)) {
+            if (!(destAddress == null || destAddress.isEmpty())) {
             	destSocketAddress = parseAndResolveAddress(destAddress);
             	InetAddress addressPart = destSocketAddress.getAddress();
             	if (addressPart != null && addressPart.isMulticastAddress())
@@ -433,8 +435,12 @@ public class ManagedUDP implements Closeable {
             }
             
             InetAddress intfHostAddress = null;
-            if (!Strings.isNullOrEmpty(intfAddress))
+            if (!(intfAddress == null || intfAddress.isEmpty()))
             	intfHostAddress = InetAddress.getByName(intfAddress);
+            
+            NetworkInterface networkInterface = null;
+            if (intfHostAddress != null)
+            	networkInterface = NetworkInterface.getByInetAddress(intfHostAddress);
             
             if (sourceMulticast || destMulticast) {
             	// multicast usage
@@ -448,8 +454,8 @@ public class ManagedUDP implements Closeable {
             	socket = multicastSocket;
             	
             	// always set the optional 'interface' if it's specified
-            	if (intfHostAddress != null)
-            		multicastSocket.setInterface(intfHostAddress);
+            	if (networkInterface != null)
+            		multicastSocket.setOption(StandardSocketOptions.IP_MULTICAST_IF, networkInterface);
             	
             	// it's important the source is used as the bind address if it
             	// not a multicast address itself
@@ -475,11 +481,15 @@ public class ManagedUDP implements Closeable {
             	
             	// join the multicast group(s) (wouldn't make much sense having one set on 'source' and 'dest' but
             	// they can try)
-            	if (sourceMulticast) 
-            		multicastSocket.joinGroup(sourceSocketAddress.getAddress());
+            	if (sourceMulticast && networkInterface != null)
+            		multicastSocket.joinGroup(new InetSocketAddress(sourceSocketAddress.getAddress(), 0), networkInterface);
+            	else if (sourceMulticast)
+            		multicastSocket.joinGroup(new InetSocketAddress(sourceSocketAddress.getAddress(), 0), networkInterface);
             	
-            	if (destMulticast)
-            		multicastSocket.joinGroup(destSocketAddress.getAddress());
+            	if (destMulticast && networkInterface != null)
+            		multicastSocket.joinGroup(new InetSocketAddress(destSocketAddress.getAddress(), 0), networkInterface);
+            	else if (destMulticast)
+            		multicastSocket.joinGroup(new InetSocketAddress(destSocketAddress.getAddress(), 0), networkInterface);
             		
             } else {
             	// unicast usage
@@ -789,7 +799,7 @@ public class ManagedUDP implements Closeable {
      * Creates a resolved (if necessary) socket address.
      */
     private static InetSocketAddress parseAndResolveAddress(String address) {
-        if (Strings.isNullOrEmpty(address))
+        if (address == null || address.isEmpty())
             throw new IllegalArgumentException("No address was given.");
 
         int lastIndexOfPort = address.lastIndexOf(':');
@@ -799,10 +809,10 @@ public class ManagedUDP implements Closeable {
         String hostPart = address.substring(0, lastIndexOfPort);
         String portPart = address.substring(lastIndexOfPort + 1);
 
-        if (Strings.isNullOrEmpty(hostPart))
+        if (hostPart == null || hostPart.isEmpty())
             throw new IllegalArgumentException("'host' is missing or empty.");
         
-        if (Strings.isNullOrEmpty(portPart))
+        if (portPart == null || portPart.isEmpty())
             throw new IllegalArgumentException("port is missing or empty.");
 
         int port;

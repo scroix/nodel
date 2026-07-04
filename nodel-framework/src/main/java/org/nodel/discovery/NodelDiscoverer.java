@@ -12,8 +12,10 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
+import java.net.NetworkInterface;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
+import java.net.StandardSocketOptions;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -143,12 +145,14 @@ public class NodelDiscoverer {
                 // socket = Environment.instance().createMulticastSocket(new InetSocketAddress(_intf, 0));
                 
                 socket = new MulticastSocket(0);
-                socket.setInterface(_intf);
                 
                 socket.setSoTimeout(5 * 60000);
                 socket.setReuseAddress(true);
                 socket.setTimeToLive(TTL);
-                socket.joinGroup(Discovery.MDNS_GROUP);
+                
+                NetworkInterface networkInterface = NetworkInterface.getByInetAddress(_intf);
+                socket.setOption(StandardSocketOptions.IP_MULTICAST_IF, networkInterface);
+                socket.joinGroup(new InetSocketAddress(Discovery.MDNS_GROUP, 0), networkInterface);
                 
                 _logger.info("Multicast socket bound to this interface. port:{}, group:{}, TTL:{}", socket.getLocalPort(), Discovery.MDNS_GROUP, TTL);
                 
