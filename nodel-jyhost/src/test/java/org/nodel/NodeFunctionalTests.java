@@ -234,10 +234,13 @@ public class NodeFunctionalTests extends TestBase {
         assertTrue(waitForNodeResponsive(TEST_NODE, 10000),
             "Node should respond after restart");
 
-        // Verify actions are available
-        APIResponse actions = apiGet("/nodes/" + encode(TEST_NODE) + "/actions");
-        assertTrue(actions.text().contains("testAction"),
-            "Actions should be available after restart");
+        // Verify the actions come back — poll rather than a one-shot read, because
+        // the restart re-boots the script context asynchronously and a single
+        // check can land in the teardown-to-rebind window on slow machines
+        String failure = pollUntil(
+            () -> apiGet("/nodes/" + encode(TEST_NODE) + "/actions").text().contains("testAction"),
+            15000, 500, "actions to be available after restart");
+        assertNull(failure, "Actions should be available after restart");
     }
 
     // ===== Script Editing Test =====
