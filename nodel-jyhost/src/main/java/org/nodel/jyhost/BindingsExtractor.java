@@ -12,7 +12,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
 
 import org.nodel.SimpleName;
@@ -194,66 +193,55 @@ public class BindingsExtractor {
         Exception exc = null;
 
         try {
-            // A Python dict exposes its entries as *hash entries*, not members
-            // (members are the dict's own attributes/methods), so check this first
-            if (definition.hasHashEntries()) {
+            if (definition.isNull()) {
+                // None: fall through to the empty binding below
+            }
+            // If it's a string, it might be JSON or a simple title
+            else if (definition.isString()) {
+                String asText = definition.asString();
+                if (!(asText == null || asText.isEmpty())) {
+                    if (asText.trim().startsWith("{")) {
+                        // Parse as JSON
+                        binding = (Binding) Serialisation.coerceFromJSON(Binding.class, asText);
+                    } else {
+                        // Just treat it as a user-friendly title
+                        binding = new Binding();
+                        binding.title = asText;
+                    }
+                }
+            }
+            // If it's executable (a function), we can check __doc__
+            // (must come before the dict/members check: functions have members too)
+            else if (definition.canExecute()) {
+                binding = new Binding();
+                // Attempt to read docstring:
+                Value docVal = definition.getMember("__doc__");
+                if (docVal != null && docVal.isString()) {
+                    String docStr = docVal.asString();
+                    if (docStr.trim().startsWith("{")) {
+                        // docstring might be JSON
+                        try {
+                            binding = (Binding) Serialisation.coerceFromJSON(Binding.class, docStr);
+                        } catch (Exception docExc) {
+                            // fallback: store doc as title
+                            binding.title = docStr;
+                        }
+                    } else {
+                        // fallback: store doc as title
+                        binding.title = docStr;
+                    }
+                }
+            }
+            // A Python dict exposes its entries as *hash entries* (its members are just
+            // attributes/methods); other member-bearing objects are treated like a dict too.
+            // toJavaMap dispatches on both.
+            else if (definition.hasHashEntries() || definition.hasMembers()) {
                 binding = (Binding) Serialisation.coerce(
                         Binding.class,
                         toJavaMap(definition),
                         String.class,
                         Object.class
                 );
-            }
-            else {
-                // If it's not a dict, maybe it's None or a simple string
-                if (!definition.isNull()) {
-                    // If it's a string, it might be JSON or a simple title
-                    if (definition.isString()) {
-                        String asText = definition.asString();
-                        if (!(asText == null || asText.isEmpty())) {
-                            if (asText.trim().startsWith("{")) {
-                                // Parse as JSON
-                                binding = (Binding) Serialisation.coerceFromJSON(Binding.class, asText);
-                            } else {
-                                // Just treat it as a user-friendly title
-                                binding = new Binding();
-                                binding.title = asText;
-                            }
-                        }
-                    }
-                    // If it's executable (a function), we can check __doc__
-                    // (must come before the generic members check: functions have members too)
-                    else if (definition.canExecute()) {
-                        binding = new Binding();
-                        // Attempt to read docstring:
-                        Value docVal = definition.getMember("__doc__");
-                        if (docVal != null && docVal.isString()) {
-                            String docStr = docVal.asString();
-                            if (docStr.trim().startsWith("{")) {
-                                // docstring might be JSON
-                                try {
-                                    Binding docBinding = (Binding) Serialisation.coerceFromJSON(Binding.class, docStr);
-                                    binding = docBinding;
-                                } catch (Exception docExc) {
-                                    // fallback: store doc as title
-                                    binding.title = docStr;
-                                }
-                            } else {
-                                // fallback: store doc as title
-                                binding.title = docStr;
-                            }
-                        }
-                    }
-                    // Anything else with members (e.g. a host object): treat like a dict
-                    else if (definition.hasMembers()) {
-                        binding = (Binding) Serialisation.coerce(
-                                Binding.class,
-                                toJavaMap(definition),
-                                String.class,
-                                Object.class
-                        );
-                    }
-                }
             }
         } catch (Exception e) {
             exc = e;
@@ -284,6 +272,12 @@ public class BindingsExtractor {
      * Converts a GraalVM Python Value into a Java Map. Python dicts expose their
      * entries as hash entries; other objects expose members. Nested structures
      * (e.g. a 'schema' dict with an 'enum' list) are converted recursively.
+     *
+     * Deliberately separate from {@link org.nodel.toolkit.PolyglotValues#toPlainJava}:
+     * that converter targets JSON round-trips (None becomes a JSONObject.NULL sentinel,
+     * no member walking), whereas Serialisation.coerce here needs plain nulls and
+     * member-bearing host objects treated like dicts. If a Value-introspection bug
+     * turns up in one, check the other.
      */
     private static Map<String, Object> toJavaMap(Value val) {
         Map<String, Object> map = new LinkedHashMap<>();

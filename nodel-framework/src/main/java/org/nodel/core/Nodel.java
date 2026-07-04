@@ -30,6 +30,7 @@ public class Nodel {
     /**
      * Fallback for environments without a generated build manifest (e.g. IDE runs);
      * builds resolve the real identifier from 'build.json' via Version.shared().
+     * Keep in step with 'baseVersion' in the root build.gradle.
      */
     private final static String FALLBACK_VERSION = "3.0.0";
 
