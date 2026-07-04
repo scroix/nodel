@@ -485,14 +485,13 @@ them).
   toolkit globals the example depends on (`date_now()`, `next_seq()`) were restored in
   scroix/nodel#36, so this is now just a matter of rewiring `ExampleScript` into
   `PyNode`'s default-script path.
-- **Minor test-infra leak:** on Unix the gradle `startNodelhost` task keeps the host's stdin
-  open via a `bash -c "tail -f /dev/null | java ..."` wrapper, and `stopNodelhost` doesn't
-  reap all of it. Observed 2026-07-04: a completed `./gradlew build` orphans the
-  `tail -f /dev/null` child (bash and java are killed), and runs interrupted before their
-  in-invocation stop leave the whole bash/tail wrapper behind (java child dead, port 18085
-  free — harmless, but they accumulate). Defined in `nodel-jyhost/build.gradle`
-  (`startNodelhost`/`stopNodelhost`). When cleaning up, `ps` for these patterns and kill only
-  the PIDs whose start times match *your* runs — a blanket
+- **FIXED in scroix/nodel#40 — Minor test-infra leak:** on Unix the gradle
+  `startNodelhost` task kept the host's stdin open via a
+  `bash -c "tail -f /dev/null | java ..."` wrapper, and `stopNodelhost` didn't reap all of
+  it. `startNodelhost` now launches java directly with piped stdin, and `stopNodelhost`
+  closes that pipe before falling back to port cleanup. Stale `tail -f /dev/null` processes
+  from pre-fix runs may still linger on dev machines; when cleaning up, `ps` for these
+  patterns and kill only the PIDs whose start times match *your* runs — a blanket
   `pkill -f 'tail -f /dev/null'` can EOF the stdin of live hosts belonging to other
   sessions/worktrees on the same machine and shut them down.
 

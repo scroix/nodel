@@ -236,25 +236,14 @@ tasks.register('startNodelhost') {
             logger.lifecycle("Using multicast AutoDNS for tests (NODEL_TEST_DISCOVERY enabled)")
         }
 
-        def pb
-        if (isWindows) {
-            // Windows: Start java directly with stdin pipe to keep process alive
-            def args = [javaExe, '-cp', hostClasspath, '-ea']
-            args.addAll(graalpyAddOpens)
-            if (useLocalDiscovery) {
-                args.add('-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance')
-            }
-            args.addAll(['org.nodel.jyhost.Launch', '-p', '18085'])
-            pb = new ProcessBuilder(args)
-            pb.redirectInput(ProcessBuilder.Redirect.PIPE)
-        } else {
-            // Unix: Use tail -f /dev/null to keep stdin open (prevents auto-shutdown)
-            def discoveryArg = useLocalDiscovery ? "-Dorg.nodel.discovery.impl='org.nodel.discovery.LocalAutoDNS;instance' " : ""
-            pb = new ProcessBuilder(
-                'bash', '-c',
-                "tail -f /dev/null | '${javaExe}' -cp '${hostClasspath}' -ea ${graalpyAddOpens.join(' ')} ${discoveryArg}org.nodel.jyhost.Launch -p 18085"
-            )
+        def args = [javaExe, '-cp', hostClasspath, '-ea']
+        args.addAll(graalpyAddOpens)
+        if (useLocalDiscovery) {
+            args.add('-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance')
         }
+        args.addAll(['org.nodel.jyhost.Launch', '-p', '18085'])
+        def pb = new ProcessBuilder(args)
+        pb.redirectInput(ProcessBuilder.Redirect.PIPE)
         pb.directory(tempDir)
         pb.redirectOutput(new File(tempDir, 'output.log'))
         pb.redirectError(new File(tempDir, 'error.log'))
@@ -291,8 +280,15 @@ tasks.register('startNodelhost') {
 tasks.register('stopNodelhost') {
     doLast {
         if (nodelProcess?.isAlive()) {
-            nodelProcess.destroyForcibly()
-            nodelProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+            try {
+                nodelProcess.outputStream.close()
+            } catch (Exception ignored) {
+                // Process may have exited or closed stdin already; fall through to wait/cleanup.
+            }
+            if (!nodelProcess.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) && nodelProcess.isAlive()) {
+                nodelProcess.destroyForcibly()
+                nodelProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+            }
         }
         // Platform-specific orphan process cleanup
         if (isWindows) {
