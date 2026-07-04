@@ -369,6 +369,9 @@ public class PyNode extends BaseDynamicNode {
             _pythonContext.getPolyglotBindings().putMember("_toolkit", _toolkit);
             _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_toolkit", _toolkit);
 
+            // Inject the node itself (2.x parity: recipes use '_node' for name lookups, etc.)
+            _pythonContext.getBindings(PYTHON_LANGUAGE_ID).putMember("_node", this);
+
             // Load and execute the toolkit bootstrap script BEFORE any user script
             loadToolkit();
 
