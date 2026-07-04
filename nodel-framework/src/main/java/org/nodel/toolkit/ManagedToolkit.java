@@ -1080,7 +1080,8 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
     @HostAccess.Export
     public String toJson(Object object) {
         ensureNotClosed();
-        return Serialisation.serialise(object);
+        // guest (e.g. GraalPy) values are normalised first — see PolyglotValues
+        return PolyglotValues.toJson(object);
     }
 
     /**
@@ -1089,7 +1090,7 @@ public class ManagedToolkit implements AutoCloseable, Closeable {
     @HostAccess.Export
     public Object fromJson(String json) {
         ensureNotClosed();
-        return Serialisation.deserialise(Object.class, json); // Fixed to include class parameter
+        return PolyglotValues.fromJson(json);
     }
     
     /**

@@ -128,7 +128,16 @@ behaviour.
 
 ### 4.8 Parameter serialisation check
 
-*   [ ] Verify `jsonEncode/jsonDecode` round-trip for GraalPy values; patch where necessary.
+*   [x] Verify `jsonEncode/jsonDecode` round-trip for GraalPy values; patch where necessary.
+
+**Implementation**: `PolyglotValues` (nodel-framework) normalises guest values —
+str/int/float/bool/None, lists, dicts, nested — into plain Java objects before
+serialisation, and parses any top-level JSON value on decode (the stock
+serialisation layer only accepted JSON objects, emitted top-level strings
+unquoted, and dropped `None` dict values). `ManagedToolkit.toJson/fromJson`
+(recipe `json_encode`/`json_decode`) delegate to it; `nodetoolkit.py` had been
+calling the old `jsonEncode`/`jsonDecode` names, which no longer existed.
+Verified by `GraalPyJsonRoundTripTest`.
 
 ### 4.9 Documentation & tooling
 

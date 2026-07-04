@@ -334,11 +334,11 @@ def UDP(source: str = '0.0.0.0:0',
 # Utility Functions
 def json_encode(obj: Any) -> str:
     """Encode object as JSON string"""
-    return _toolkit.jsonEncode(obj)
+    return _toolkit.toJson(obj)
 
 def json_decode(json_str: str) -> Any:
     """Decode JSON string to object"""
-    return _toolkit.jsonDecode(json_str)
+    return _toolkit.fromJson(json_str)
 
 def same_value(obj1: Any, obj2: Any) -> bool:
     """Deep comparison of two values"""
