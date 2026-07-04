@@ -202,9 +202,9 @@ curl -s $BASE/REST | head -c 200
 
 # Node map (name -> {name, desc, started, nodelVersion})
 curl -s $BASE/REST/nodes | python3 -m json.tool | head
-# Expected: JSON object keyed by node name; each value has "desc":"GraalVM Python Node" and a
-# "nodelVersion" field. NOTE: nodelVersion currently reports "2.2.1" on a 3.0.0 host — stale
-# constant in org.nodel.core.Nodel, see Known Issues.
+# Expected: JSON object keyed by node name; each value has "desc":"GraalVM Python Node" and
+# "nodelVersion":"3.0.0-<branch>_r<N>" — the full build identifier, same as the banner.
+# (A plain "2.2.1" here means the host predates scroix/nodel#37.)
 
 # Diagnostics — JVM/host state
 curl -s $BASE/REST/diagnostics | python3 -c "import sys,json;print(sorted(json.load(sys.stdin).keys()))"
@@ -214,8 +214,8 @@ curl -s $BASE/REST/diagnostics | python3 -c "import sys,json;print(sorted(json.l
 
 # Framework logs (newest-first; seq/timestamp/level/message rows)
 curl -s "$BASE/REST/logs?from=0&max=3" | head -c 300
-# Expected: JSON array; the earliest entries are the LocalAutoDNS warning from §2 and — once
-# the sync node's timer has fired — the known SyncNow null-handler ERROR (see Known Issues)
+# Expected: JSON array; the earliest entry is the LocalAutoDNS warning from §2. (A SyncNow
+# null-handler ERROR also appearing here means the host predates scroix/nodel#37.)
 
 # Python toolkit reference served to script authors
 curl -s $BASE/REST/toolkit | head -c 120
@@ -271,7 +271,9 @@ curl -s "$BASE/REST/nodes/Smoke%20Producer/actions"
 # Expected: {"sendPing":{"group":"Ping","name":"sendPing",...,"schema":{"type":"string"},"title":"Send Ping"}}
 
 curl -s "$BASE/REST/nodes/Smoke%20Producer/events" | head -c 250
-# Expected: object with "Ping" (no arg yet) and "Status" with "arg":"Ready" (emitted by main())
+# Expected: object with "Ping" (no arg yet) and "Status" with "arg":"Ready" (emitted by main());
+# both carry the "group" and "schema" from their LocalEvent metadata (missing group/schema
+# means the host predates scroix/nodel#37)
 
 curl -s "$BASE/REST/nodes/Smoke%20Producer/params"
 # Expected: {}  (the Label parameter exists but is unset)
@@ -465,22 +467,24 @@ them).
 
 - *(2.x baseline: no product bugs found — authored 2026-07-04 against v2.2.1 rev550; the v3
   replay below was run 2026-07-04 against v3.0.0 rev624, 138/138 committed tests passing)*
-- **Stale version constant (v3):** a 3.0.0 host reports `"nodelVersion":"2.2.1"` on
-  `/REST/nodes` — `org.nodel.core.Nodel`'s `VERSION` constant was never bumped when the v3
-  line was established (the startup banner gets the real 3.0.0 identifier from the build).
-- **Function-style local actions log a null-handler error (v3):** the built-in recipes-sync
-  node (`first_node.py`, `def local_action_SyncNow(...)`) logs
-  `Error executing action 'SyncNow': ... "this.val$handler" is null` every time its timer
-  fires `lookup_local_action("SyncNow").call()`. The sync work itself completes (clone/pull
-  logs appear); the error is noise but it is the first entry in `/REST/logs` on a fresh
-  host. Decorator-style actions (`@local_action`, as in the fixtures) are unaffected.
-- **Local events lost `group`/`schema` over REST (v3):** `/REST/nodes/<n>/events` entries
-  carry only `{arg, seq, timestamp, name, title, order}` — the `group` and `schema` from
-  `LocalEvent({...})` are dropped (actions keep theirs). BindingsExtractor still parses
-  them, so they're lost between extraction and live-event registration in PyNode.
+- **FIXED in scroix/nodel#37 — stale version constant (v3):** a 3.0.0 host reported
+  `"nodelVersion":"2.2.1"` on `/REST/nodes`; `Nodel.getVersion()` now resolves from the
+  build manifest (same source as the banner), so the field carries the full
+  `3.0.0-<branch>_r<N>` identifier.
+- **FIXED in scroix/nodel#37 — function-style local actions logged a null-handler error
+  (v3):** every invocation of a `def local_action_X` binding ran the body then logged
+  `Error executing action ...: "this.val$handler" is null`; the built-in recipes-sync node
+  hit it on each `SyncNow` timer fire. Decorator-style actions were unaffected.
+- **FIXED in scroix/nodel#37 — dict binding metadata was lost on extraction (v3):**
+  a GraalPy dict exposes hash entries, not members, so `LocalEvent`/`Parameter` dicts and
+  action docstrings fell through to a name-only fallback — `/events` had no
+  `group`/`schema`, and the web UI's grouping and forms degraded with them.
 - **Example recipe no longer provisioned (v3):** a blank node gets a one-line
   `Hello from Python` stub written by `PyNode.init()`; `ExampleScript.java` /
-  `example_script.py` (the 2.x "Recipe has started!" example) are now dead code.
+  `example_script.py` (the 2.x "Recipe has started!" example) are now dead code. Restoring
+  it needs toolkit parity first: `date_now()` and `next_seq()` (used by the example and by
+  many real recipes) are missing from the v3 toolkit — any script referencing them fails
+  to load with a `NameError`.
 - **Minor test-infra leak:** on Unix the gradle `startNodelhost` task keeps the host's stdin
   open via a `bash -c "tail -f /dev/null | java ..."` wrapper, and `stopNodelhost` doesn't
   reap all of it. Observed 2026-07-04: a completed `./gradlew build` orphans the
@@ -531,4 +535,5 @@ Minimum viable smoke coverage achieved when:
 
 *Authored 2026-07-04 against the 2.x line (v2.2.1 rev550); ported to and fully re-executed
 against the v3 line (Nodel 3.0.0 on GraalVM, rev624) on 2026-07-04 — every command above was
-run and its output verified on v3 during the port.*
+run and its output verified on v3 during the port. Expectations that depend on the
+scroix/nodel#37 fixes were re-verified against a host built with those fixes applied.*
