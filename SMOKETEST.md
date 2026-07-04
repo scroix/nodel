@@ -467,6 +467,18 @@ them).
 
 - *(2.x baseline: no product bugs found — authored 2026-07-04 against v2.2.1 rev550; the v3
   replay below was run 2026-07-04 against v3.0.0 rev624, 138/138 committed tests passing)*
+- **FIXED — boot-time save/maintenance race wedged a node (v3):** a config save (e.g.
+  `/remote/save`) issued within ~1s of a node first answering REST — while the host's initial
+  maintenance pass was still constructing sibling nodes — cancelled a GraalPy context mid-init,
+  leaked the node's event-name registration, and the host then retried a duplicate node for the
+  same folder every ~10s, failing forever with `Already bound - <node>.<event>` (subsequent
+  saves on the live node returned 500). Found while authoring the GraalJS section
+  (scroix/nodel#34), though language-independent — the trigger was save timing. Root cause:
+  `PyNode` becomes REST-visible when `BaseNode`'s constructor registers its name, but ran its
+  first `init()` outside `_reloadLock`, so a save's `reload()` could tear the context down
+  mid-init; first-time construction now holds `_reloadLock`, reloads no-op until the first
+  `init()` completes, and a failed construction fully releases its registrations and REST
+  visibility.
 - **FIXED in scroix/nodel#37 — stale version constant (v3):** a 3.0.0 host reported
   `"nodelVersion":"2.2.1"` on `/REST/nodes`; `Nodel.getVersion()` now resolves from the
   build manifest (same source as the banner), so the field carries the full
