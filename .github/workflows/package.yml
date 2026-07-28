@@ -1,26 +1,44 @@
 name: Package Self-Contained
 
-# Goal 3: build a self-contained distributable (bundled Java runtime — no
-# Java needed on the target machine) and prove it works in a container that
-# has no Java at all. See BUILDING.md / README "Running without Java".
+# Goal 3: build self-contained distributables (bundled Java runtime — no Java
+# needed on the target machine) and smoke-test each platform. Linux additionally
+# proves the package works in a container with no Java. See BUILDING.md / README.
 
 on:
   push:
     branches: [v3, 'feat/**']
   workflow_dispatch:
 
-concurrency:
-  group: package-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
 jobs:
   app-image:
-    name: Linux x64 app-image
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }} app-image
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    concurrency:
+      group: package-${{ github.ref }}-${{ matrix.id }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x64
+            name: Linux x64
+            runner: ubuntu-latest
+            asset: nodelhost-v3-linux-x64.tar.gz
+            include_jar: true
+          - id: linux-arm64
+            name: Linux arm64
+            runner: ubuntu-24.04-arm
+            asset: nodelhost-v3-linux-arm64.tar.gz
+            include_jar: false
+          - id: macos-arm64
+            name: macOS arm64
+            runner: macos-latest
+            asset: nodelhost-v3-macos-arm64.zip
+            include_jar: false
 
     steps:
       - name: Checkout
@@ -46,6 +64,7 @@ jobs:
       # the container check below is the strictest gate (boots AND functions with
       # no Java present), so no separate runner-level smoke is needed
       - name: Boot + function check in a java-less container
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           IMAGE_DIR="$PWD/nodel-jyhost/build/jpackage/image/nodelhost"
@@ -66,11 +85,216 @@ jobs:
           ./scripts/packaged-smoke.sh verify 18086 || { docker logs nodel; docker rm -f nodel; exit 1; }
           docker rm -f nodel
 
+      - name: Boot + function check on macOS
+        if: runner.os == 'macOS'
+        run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/jpackage/image/nodelhost.app/Contents/MacOS/nodelhost" 18086
+
+      - name: Stage stable release assets
+        env:
+          ASSET_NAME: ${{ matrix.asset }}
+          INCLUDE_JAR: ${{ matrix.include_jar }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+
+          archives=(nodel-jyhost/build/distributions/app-image/*)
+          if [ "${#archives[@]}" -ne 1 ] || [ ! -f "${archives[0]}" ]; then
+            echo "expected exactly one app-image archive" >&2
+            exit 1
+          fi
+          cp "${archives[0]}" "release-assets/$ASSET_NAME"
+
+          if [ "$INCLUDE_JAR" = "true" ]; then
+            jars=(nodel-jyhost/build/distributions/standalone/nodelhost-*.jar)
+            if [ "${#jars[@]}" -ne 1 ] || [ ! -f "${jars[0]}" ]; then
+              echo "expected exactly one standalone jar" >&2
+              exit 1
+            fi
+            cp "${jars[0]}" release-assets/nodelhost-v3.jar
+          fi
+
       - name: Upload distributable
         uses: actions/upload-artifact@v4
         with:
-          name: nodelhost-appimage-linux-x64
-          path: nodel-jyhost/build/distributions/app-image/*.tar.gz
+          name: v3-release-${{ matrix.id }}
+          path: release-assets/*
           if-no-files-found: error
           retention-days: 14
-          compression-level: 0   # already a .tar.gz; don't deflate it again
+          compression-level: 0   # archives and the jar are already compressed
+
+  test-gate:
+    name: Await green Build and Test
+    if: github.ref == 'refs/heads/v3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    concurrency:
+      group: package-test-gate-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check the same commit passed Build and Test
+        # actions/github-script v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const deadline = Date.now() + 30 * 60 * 1000;
+            while (Date.now() < deadline) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'build.yml',
+                head_sha: context.sha,
+                event: 'push',
+                per_page: 10,
+              });
+              const run = data.workflow_runs.find(candidate =>
+                candidate.head_sha === context.sha && candidate.event === 'push');
+
+              if (run?.status === 'completed') {
+                if (run.conclusion !== 'success') {
+                  core.setFailed(`Build and Test concluded ${run.conclusion}: ${run.html_url}`);
+                  return;
+                }
+                core.info(`Build and Test passed: ${run.html_url}`);
+                return;
+              }
+
+              core.info(run
+                ? `Build and Test is ${run.status}; checking again in 15 seconds`
+                : 'Build and Test run not visible yet; checking again in 15 seconds');
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            core.setFailed(`Timed out waiting for Build and Test on ${context.sha}`);
+
+  release:
+    name: Publish v3 tip prerelease
+    if: github.ref == 'refs/heads/v3'
+    needs: [app-image, test-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: v3-tip-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout release commit
+        # actions/checkout v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          filter: tree:0
+
+      - name: Download release assets
+        # actions/download-artifact v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: v3-release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify complete release set
+        run: |
+          set -euo pipefail
+          expected=(
+            nodelhost-v3-linux-x64.tar.gz
+            nodelhost-v3-linux-arm64.tar.gz
+            nodelhost-v3-macos-arm64.zip
+            nodelhost-v3.jar
+          )
+          for asset in "${expected[@]}"; do
+            test -f "release-assets/$asset"
+          done
+          test "$(find release-assets -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq "${#expected[@]}"
+
+      - name: Resolve commit metadata
+        id: meta
+        run: |
+          echo "rev=$(git rev-list --count "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+          echo "sha_short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        env:
+          REV: ${{ steps.meta.outputs.rev }}
+          SHA: ${{ github.sha }}
+          SHA_SHORT: ${{ steps.meta.outputs.sha_short }}
+        run: |
+          cat > release_notes.md <<EOF
+          Automatically built from [\`v3\` commit \`$SHA_SHORT\`](https://github.com/${{ github.repository }}/commit/$SHA) after its Build and Test workflow passed.
+
+          Nodel revision: \`rev$REV\`
+
+          > [!WARNING]
+          > This is a moving development prerelease, not a stable release.
+
+          ## Downloads
+
+          - \`nodelhost-v3-linux-x64.tar.gz\` — Linux x64
+          - \`nodelhost-v3-linux-arm64.tar.gz\` — Linux arm64 (Raspberry Pi 4/5 class)
+          - \`nodelhost-v3-macos-arm64.zip\` — Apple-silicon macOS
+          - \`nodelhost-v3.jar\` — platform-independent jar; requires Java 21+
+
+          The self-contained packages include Java. Extract one, run the \`nodelhost\` launcher from a directory where Nodel can keep its files, then open http://localhost:8085.
+
+          The macOS build is unsigned. If Gatekeeper quarantines it, run:
+
+          \`\`\`sh
+          xattr -dr com.apple.quarantine ~/nodelhost.app
+          \`\`\`
+          EOF
+
+      - name: Upload release
+        # softprops/action-gh-release v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: v3-tip
+          target_commitish: ${{ github.sha }}
+          name: Nodel v3 Tip
+          prerelease: true
+          body_path: release_notes.md
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          make_latest: false
+
+      - name: Move v3-tip tag
+        # actions/github-script v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_SHA_SHORT: ${{ steps.meta.outputs.sha_short }}
+        with:
+          script: |
+            const sha = process.env.RELEASE_SHA;
+            const tagName = 'v3-tip';
+            const ref = `tags/${tagName}`;
+            const { data: tagObject } = await github.rest.git.createTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: tagName,
+              message: `${tagName}: ${process.env.RELEASE_SHA_SHORT}`,
+              object: sha,
+              type: 'commit',
+            });
+
+            try {
+              await github.rest.git.updateRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref,
+                sha: tagObject.sha,
+                force: true,
+              });
+            } catch (error) {
+              if (error.status !== 422) throw error;
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/${ref}`,
+                sha: tagObject.sha,
+              });
+            }

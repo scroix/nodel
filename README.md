@@ -111,7 +111,7 @@ The platform-independent nature of Nodel also allows it to easily scale to suit 
 System requirements
 ============
 
-* The **self-contained package** needs no Java at all (bundled runtime) – Linux x64 and macOS arm64 today
+* The **self-contained package** needs no Java at all (bundled runtime) – Linux x64/arm64 and macOS arm64
 * The classic jar runs on any operating system with a Java 21+ runtime – including OS X, Windows or Linux
 * A current web browser
 * Made for mobile
@@ -123,13 +123,13 @@ Every build produces a **self-contained package** with Java built in — nothing
 to install first. This is the recommended way to run Nodel on a fresh machine
 (e.g. a gallery PC or a Raspberry Pi-class device):
 
-1. **Download** the `nodelhost-...-linux-x64.tar.gz` (Linux) or
-   `nodelhost-...-macos-aarch64.zip` (Apple-silicon Mac) package — from the
-   *Package Self-Contained* workflow artifacts on GitHub Actions (or build it
-   yourself, see below).
+1. **Download** the latest tested v3 package:
+   * [Linux x64](https://github.com/scroix/nodel/releases/download/v3-tip/nodelhost-v3-linux-x64.tar.gz)
+   * [Linux arm64](https://github.com/scroix/nodel/releases/download/v3-tip/nodelhost-v3-linux-arm64.tar.gz) (Raspberry Pi 4/5 class)
+   * [macOS arm64](https://github.com/scroix/nodel/releases/download/v3-tip/nodelhost-v3-macos-arm64.zip) (Apple silicon)
 2. **Extract it** somewhere permanent, e.g. your home folder:
-   * Linux: `tar xzf nodelhost-*-linux-x64.tar.gz`
-   * macOS: double-click the zip, or `unzip nodelhost-*-macos-aarch64.zip`
+   * Linux: `tar xzf nodelhost-v3-linux-*.tar.gz`
+   * macOS: double-click the zip, or `unzip nodelhost-v3-macos-arm64.zip`
 3. **Make a folder for Nodel's files and start it from there** (Nodel keeps
    its nodes and settings in the folder you start it from):
    * Linux:
@@ -151,6 +151,8 @@ to install first. This is the recommended way to run Nodel on a fresh machine
    (`script.py`) and JavaScript (`script.js`) recipes both work.
 
 To stop Nodel, press Enter in its console (or just close the terminal).
+The [v3 tip prerelease](https://github.com/scroix/nodel/releases/tag/v3-tip)
+also includes a plain `nodelhost-v3.jar` for machines with Java 21+ installed.
 
 Quick start (classic jar)
 =========================
