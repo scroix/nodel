@@ -24,6 +24,7 @@ jobs:
         uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm-community
+          version: '25.2'
           java-version: '25.0.4'
 
       - name: Setup Gradle
@@ -46,6 +47,7 @@ jobs:
         uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm-community
+          version: '25.2'
           java-version: '25.0.4'
 
       - name: Setup Gradle
@@ -78,6 +80,7 @@ jobs:
         uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm-community
+          version: '25.2'
           java-version: '25.0.4'
 
       - name: Setup Gradle
@@ -132,6 +135,7 @@ jobs:
         uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm-community
+          version: '25.2'
           java-version: '25.0.4'
 
       - name: Setup Gradle
