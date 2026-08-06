@@ -8,8 +8,13 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
+import java.lang.management.ManagementFactory;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests GraalVM Python context configuration, specifically host class access.
  */
 public class GraalVMContextTest {
+
+    private static final String FALLBACK_WARNING = "fallback runtime";
 
     // Shared NodelHost instance for all tests
     public static NodelHost sharedHost;
@@ -60,6 +67,62 @@ public class GraalVMContextTest {
             }
         }
         directory.delete();
+    }
+
+    @Test
+    public void testSupportedRuntimeCompilesBothLanguagesWithoutFallbackWarning() throws Exception {
+        List<String> inputArguments = ManagementFactory.getRuntimeMXBean().getInputArguments();
+        assertTrue(System.getProperty("java.vm.vendor").contains("GraalVM"),
+                "Gradle test JVM must use the GraalVM toolchain");
+
+        for (String language : List.of("python", "js")) {
+            ProbeResult optimized = runProbe(language, inputArguments);
+            assertEquals(0, optimized.exitCode, optimized.output);
+            assertTrue(optimized.output.contains("result=42"), optimized.output);
+            assertTrue(optimized.output.contains("supportsCompilation=true"), optimized.output);
+            assertFalse(optimized.output.contains(FALLBACK_WARNING), optimized.output);
+        }
+    }
+
+    private static ProbeResult runProbe(String language, List<String> inputArguments)
+            throws Exception {
+        String javaName = System.getProperty("os.name").toLowerCase().contains("windows") ? "java.exe" : "java";
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", javaName).toString());
+        inputArguments.stream()
+                .filter(arg -> arg.startsWith("--add-opens=")
+                        || arg.startsWith("--enable-native-access="))
+                .forEach(command::add);
+        command.addAll(List.of("-cp", System.getProperty("java.class.path"),
+                GraalVMContextTest.class.getName(), "probe", language));
+
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        if (!process.waitFor(60, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            fail("Timed out waiting for " + language + " runtime probe");
+        }
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        return new ProbeResult(process.exitValue(), output);
+    }
+
+    public static void main(String[] args) {
+        if (args.length != 2 || !"probe".equals(args[0]) || !("python".equals(args[1]) || "js".equals(args[1]))) {
+            throw new IllegalArgumentException("usage: GraalVMContextTest probe <python|js>");
+        }
+        try (Context context = Context.newBuilder(args[1]).build()) {
+            System.out.println("supportsCompilation=" + context.getEngine().supportsCompilation());
+            System.out.println("result=" + context.eval(args[1], "6 * 7").asInt());
+        }
+    }
+
+    private static final class ProbeResult {
+        private final int exitCode;
+        private final String output;
+
+        private ProbeResult(int exitCode, String output) {
+            this.exitCode = exitCode;
+            this.output = output;
+        }
     }
 
     @Test

@@ -1,5 +1,11 @@
 import org.joda.time.DateTime
 
+def commandOutput = { List<String> command ->
+    providers.exec {
+        commandLine command
+    }.standardOutput.asText.get().trim()
+}
+
 buildscript {
     repositories {
         mavenCentral()
@@ -17,37 +23,10 @@ ext {
         def origin = ""
 
         try {
-            branch = new ByteArrayOutputStream().withStream { os ->
-                exec {
-                    commandLine 'git', 'rev-parse', '--abbrev-ref', 'HEAD'
-                    standardOutput = os
-                }
-                return os.toString().trim()
-            }
-
-            id = new ByteArrayOutputStream().withStream { os ->
-                exec {
-                    commandLine 'git', 'rev-parse', 'HEAD'
-                    standardOutput = os
-                }
-                return os.toString().trim()
-            }
-
-            rev = new ByteArrayOutputStream().withStream { os ->
-                exec {
-                    commandLine 'git', 'rev-list', '--count', 'HEAD'
-                    standardOutput = os
-                }
-                return os.toString().trim()
-            }
-
-            origin = new ByteArrayOutputStream().withStream { os ->
-                exec {
-                    commandLine 'git', 'config', '--get', 'remote.origin.url'
-                    standardOutput = os
-                }
-                return os.toString().trim()
-            }
+            branch = commandOutput(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
+            id = commandOutput(['git', 'rev-parse', 'HEAD'])
+            rev = commandOutput(['git', 'rev-list', '--count', 'HEAD'])
+            origin = commandOutput(['git', 'config', '--get', 'remote.origin.url'])
         } catch (Exception e) {
             logger.warn("Error executing git command: ${e.message}")
         }
@@ -83,11 +62,12 @@ subprojects {
     group = 'org.nodel'
     version = rootProject.ext.baseVersion
 
-    // GraalVM Polyglot (GraalPy) requires JDK 21+; the toolchain is auto-provisioned
-    // by the foojay resolver (see settings.gradle) when no local JDK 21 is found
+    // GraalPy 25.2 is supported on the matching GraalVM 25 toolchain. The
+    // foojay resolver auto-provisions it when it is not installed locally.
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
+            languageVersion = JavaLanguageVersion.of(25)
+            vendor = JvmVendorSpec.GRAAL_VM
         }
     }
 

@@ -65,11 +65,13 @@ graph TD
     *   Console shim keeps `console.instance` pattern alive.
     *   Timer, TCP, UDP, call/call_safe, decorator helpers ported.
 
-*   [x] **Build & runtime** (Jul 2026)
-    *   Gradle 8.14.5, Java 21 via auto-provisioned Gradle toolchain (foojay
-        resolver) — a clean checkout builds with no machine-specific setup and
-        no local JDK 21. The shadow jar carries an `Add-Opens` manifest so
-        `java -jar nodelhost.jar` runs flagless on Java 21+.
+*   [x] **Build & runtime** (Aug 2026)
+    *   Gradle 9.6.1, GraalVM Community 25.2.4 on JDK 25.0.4 via the
+        auto-provisioned Gradle toolchain (foojay resolver). Gradle-run hosts
+        and tests use its matching LibGraal optimizing runtime.
+    *   The shadow jar carries `Add-Opens` and `Enable-Native-Access` manifest
+        entries, so `java -jar nodelhost.jar` runs flagless on the matching
+        GraalVM distribution. Other JDK distributions are unsupported.
     *   Node starts, runs recipes, REPL (`exec`, `eval`) functional.
     *   Rebased onto `dev` (Playwright integration/e2e suite, LocalAutoDNS test
         discovery, dependency bumps); full `./gradlew build` green.
@@ -136,13 +138,15 @@ graph TD
         (`areSameValue`/`get*` — they previously named methods that don't
         exist and threw at runtime).
 
-*   [x] **Self-contained distributable** (Jul 2026, goal 3)
-    *   **Shipped artifact: jpackage app-image** (bundled Java 21 runtime — no
+*   [x] **Self-contained distributable** (Aug 2026, goal 3)
+    *   **Shipped artifact: jpackage app-image** (bundled Java 25 runtime — no
         Java needed on the target machine). `./gradlew :nodel-jyhost:packageAppImage`
-        stages the shadow jar alone, runs the toolchain JDK's `jpackage
-        --type app-image` with the GraalPy `--java-options` (Add-Opens +
-        `--enable-native-access`), and archives it with command-line
-        `zip`/`tar` (Gradle's archivers drop symlinks/exec bits). ~200 MB.
+        stages the shadow jar, runs the GraalVM toolchain's
+        `jpackage --type app-image` with the complete GraalVM module set
+        (including compiler/JVMCI), Add-Opens and native-access options, and
+        archives it with command-line
+        `zip`/`tar` (Gradle's archivers drop symlinks/exec bits). ~300 MB
+        uncompressed on macOS arm64.
         Verified: boots in an env with no `java`/`JAVA_HOME` (macOS) and in a
         java-less `debian:bookworm-slim` container (CI); passes
         `packaged-smoke.sh`, `polyglot-smoke.sh` and `compat-smoke.sh`.
@@ -162,15 +166,14 @@ graph TD
 
     **Native Image attempt (time-boxed, goal 3) — outcome: WORKS but demoted
     to experimental.** `./gradlew -PnativeImage :nodel-jyhost:nativeCompile`
-    with `GRAALVM_HOME` = GraalVM CE for JDK 24 (Truffle 24.2.0 match) builds
-    a 394 MB self-contained executable in ~2 min (peak RSS ~13.6 GB) that
+    with `GRAALVM_HOME` = GraalVM Community 25.2.4 builds
+    a 294 MB self-contained executable in ~2.5 min (peak RSS ~11.2 GB) that
     passes packaged-smoke, polyglot-smoke AND compat-smoke (full multicast
     discovery + all wire round trips vs stock Jython v2.2.1). Config ledger —
     every workaround and its why:
-    *   `-PnativeImage` dependency substitution → `python-community` /
-        `js-community`: the Oracle-flavoured artifacts force-enable
-        `com.oracle.truffle.runtime.enterprise.EnableEnterpriseFeature`,
-        which doesn't exist on GraalVM CE (hard build failure).
+    *   Graal 25 language POMs are OSS licensed, so native-image and JVM builds
+        use the same `org.graalvm.polyglot:python` / `js` dependencies without
+        the old `-community` substitution.
     *   Removed `--initialize-at-build-time=org.slf4j` (was in the stale
         `graalvmNative` block): it captured Nodel's own slf4j binding
         (`SimpleLoggerFactory` → `Level` → timers/threads) in the image heap,
@@ -203,7 +206,7 @@ graph TD
         caveats, so it ships.
 
     **Notes for goal 3 (native image)** — architectural record:
-    *   The language set is now **GraalPy + GraalJS** (`org.graalvm.js:js`
+    *   The language set is now **GraalPy + GraalJS** (`org.graalvm.polyglot:js`
         added in `nodel-jyhost/build.gradle`); native-image configs must
         include both Truffle languages.
     *   Language selection is a per-node runtime decision keyed off the
@@ -290,8 +293,8 @@ Verified by `GraalPyJsonRoundTripTest`.
 
 ### 4.9 Documentation & tooling
 
-*   [x] BUILDING.md updated: JDK 21 + auto-provisioned toolchain (no
-    `GRAALVM_HOME` needed — stock OpenJDK works), testing and wire-compat
+*   [x] BUILDING.md updated: GraalVM Community 25.2.4 + auto-provisioned
+    toolchain (no `GRAALVM_HOME` needed), testing and wire-compat
     smoke instructions.
 *   [x] Recipe-authoring notes for Python 3 differences (see §6).
 *   [ ] Provide a "compatibility matrix" (feature / Jython / GraalPy).

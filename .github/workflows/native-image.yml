@@ -25,10 +25,11 @@ jobs:
           filter: tree:0
 
       # exports GRAALVM_HOME/JAVA_HOME itself
-      - name: Setup GraalVM CE 24
+      - name: Setup GraalVM CE 25.2.4 on JDK 25.0.4
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '24'
+          java-version: '25.0.4'
+          version: '25.2'
           distribution: 'graalvm-community'
 
       - name: Setup Gradle
@@ -42,6 +43,9 @@ jobs:
 
       - name: Functional smoke against the native binary
         run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/native/nativeCompile/nodelhost"
+
+      - name: Polyglot binding smoke against the native binary
+        run: GRAAL_NODEL_JAR="$PWD/nodel-jyhost/build/native/nativeCompile/nodelhost" ./scripts/polyglot-smoke.sh
 
       - name: Archive binary
         run: |

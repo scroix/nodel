@@ -3,10 +3,12 @@ In short, clone this repository and run `gradlew build`.
 
 > [!NOTE]
 > This branch hosts node scripts on **GraalVM Python (GraalPy, Python 3)**
-> instead of Jython 2.5. The build compiles and tests with a **Java 21
-> toolchain that Gradle provisions automatically** (foojay resolver) — you only
-> need enough Java on the PATH to bootstrap Gradle itself (JDK 11+). *Running*
-> the built `nodelhost` jar requires **Java 21 or newer**.
+> instead of Jython 2.5. The build compiles and tests with **GraalVM Community
+> 25.2.4 on JDK 25.0.4**, which Gradle provisions automatically through
+> Foojay. You only need enough Java on the PATH to bootstrap Gradle itself
+> (JDK 17+). *Running*
+> the built `nodelhost` jar requires that same GraalVM line; other JDK
+> distributions are not supported.
 
 The steps below describe usage on both Windows and Linux
 * The inline snippets refer to **Windows**
@@ -15,22 +17,19 @@ The steps below describe usage on both Windows and Linux
 ---
 
 ## STEP 1: ENSURE PRIMARY DEPENDENCIES ARE PRESENT†
-  1. **Java JDK 21** recommended (JDK 11+ is enough to bootstrap Gradle — the build
-      auto-provisions a JDK 21 toolchain for compiling and testing, but running the
-      built jar needs 21+), see production ready distributions from [Amazon Corretto](https://aws.amazon.com/corretto)
-      * latest Windows x64 redirected [download link](https://corretto.aws/downloads/latest/amazon-corretto-21-x64-windows-jdk.zip)
-      * latest Linux aarch64 redirected [download link](https://corretto.aws/downloads/latest/amazon-corretto-21-aarch64-linux-jdk.tar.gz)
-      * latest Linux x64 redirected [download link](https://corretto.aws/downloads/latest/amazon-corretto-21-x64-linux-jdk.tar.gz)
-   3. **Git**, see [latest versions](https://git-scm.com/downloads)
+  1. **GraalVM Community 25.2.4** recommended (JDK 17+ is enough to bootstrap
+      Gradle because the build auto-provisions its GraalVM toolchain, but the
+      built jar itself requires GraalVM), see the [GraalVM Community releases](https://github.com/graalvm/graalvm-ce-builds/releases/tag/graal-25.2.4)
+   2. **Git**, see [latest versions](https://git-scm.com/downloads)
       * latest Windows snapshot link - [PortableGit-2.50.0-64-bit.7z.exe](https://github.com/git-for-windows/git/releases/download/v2.50.0.windows.1/PortableGit-2.50.0-64-bit.7z.exe)
       * Linux install `apt-get install git`
 
-† all support "portable" low-impact installation, examples here are extracted to `C:\Apps\jdk21` and `C:\Apps\git\bin` respectively.
+† all support "portable" low-impact installation, examples here are extracted to `C:\Apps\jdk25` and `C:\Apps\git\bin` respectively.
 
 ## STEP 2: ENSURE DEPENDENCIES ARE ACCESSIBLE
 * ensure dependencies above, are on path, e.g. on Windows:
 ```bat
-set PATH=C:\Apps\git\bin;C:\Apps\jdk21\bin;%PATH%
+set PATH=C:\Apps\git\bin;C:\Apps\jdk25\bin;%PATH%
 ```
 
 ## STEP 3: CLONE REPOSITORY
@@ -53,7 +52,7 @@ gradlew build
 
 ## Running for Development/Testing (Without Full Build)
 
-To run the application directly for development or testing purposes without creating a standalone JAR file, you can use the Gradle `run` task. This compiles the necessary code and executes the application using the configured Java 21 toolchain (auto-provisioned by Gradle if not installed locally).
+To run the application directly for development or testing purposes without creating a standalone JAR file, use the Gradle `run` task. It executes with the auto-provisioned GraalVM Community 25.2.4 toolchain and its optimizing runtime.
 
 From the project root directory (`nodel`), execute:
 
@@ -70,21 +69,22 @@ This method is useful for quick testing cycles as it avoids the overhead of buil
 **Full example using clean Linux environment¹**
 
 ```bash
-# download and extract Java JDK 21
-wget https://corretto.aws/downloads/latest/amazon-corretto-21-aarch64-linux-jdk.tar.gz
-tar xf amazon-corretto-21-aarch64-linux-jdk.tar.gz
+# download and extract GraalVM Community 25.2.4 (Linux arm64 example)
+wget https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.2.4/graalvm-community-jdk-25i2-25.0.4_linux-aarch64_bin.tar.gz
+tar xf graalvm-community-jdk-25i2-25.0.4_linux-aarch64_bin.tar.gz
 
-# Your Java ends up in ~/amazon-corretto-21.x.y.z-linux-aarch64
+# Your Java ends up in ~/graalvm-community-25.2.4+7.1
 
 # (git is normally already available)
 
 # adjust PATH to ensure your Java is used first
-export PATH=~/amazon-corretto-21.x.y.z-linux-aarch64/bin:$PATH
+export JAVA_HOME=~/graalvm-community-25.2.4+7.1
+export PATH="$JAVA_HOME/bin:$PATH"
 
 # quickly verify versions of all dependencies
 
 java -version 
-# e.g. >> openjdk version "21.0.x" LTS
+# e.g. >> OpenJDK Runtime Environment GraalVM CE 25.2.4
 
 git version
 # e.g. >> git version 2.39.5
@@ -105,8 +105,8 @@ cd ~/nodel-build/nodel-jyhost/build/distributions/standalone/
 ls
 # e.g. >> -rw-r--r-- 1 nodel nodel 20214394 May 19 16:03 nodelhost-dev-2.2.1-rev521.jar
 
-# run Nodel (optional; needs Java 21+, no extra JVM flags — the jar's manifest
-# carries the required Add-Opens entries)
+# run Nodel (optional; needs GraalVM Community 25.2.4, no extra JVM flags —
+# the jar's manifest carries the required Add-Opens/native-access entries).
 java -jar ~/nodel-build/nodel-jyhost/build/distributions/standalone/nodelhost-dev-2.2.1-rev521.jar -p 0
 # e.g. >> Nodel [GraalPython] v2.2.1-dev_r521 is running.
 #      >>
@@ -129,8 +129,8 @@ git clean -fxd
 
 **Full cleanup**
 ```bash
-rm amazon-corretto-21-aarch64-linux-jdk.tar.gz
-rm -fr ~/amazon-corretto-21.x.y.z-linux-aarch64
+rm graalvm-community-jdk-25i2-25.0.4_linux-aarch64_bin.tar.gz
+rm -fr ~/graalvm-community-25.2.4+7.1
 rm -fr ~/nodel-build
 ```
 
@@ -179,7 +179,7 @@ NODEL_TEST_DISCOVERY=1 ./gradlew :nodel-jyhost:integrationTest --tests org.nodel
 ## SELF-CONTAINED PACKAGING (no Java on the target machine)
 
 `./gradlew :nodel-jyhost:packageAppImage` builds a **jpackage app-image** —
-the standalone jar plus a bundled Java 21 runtime — and archives it under
+the standalone jar plus a bundled GraalVM Community runtime — and archives it under
 `nodel-jyhost/build/distributions/app-image/` (`.tar.gz` on Linux, `.zip` on
 macOS). The image itself is left in `nodel-jyhost/build/jpackage/image/`
 (launcher: `nodelhost/bin/nodelhost` on Linux,
@@ -203,9 +203,9 @@ uploads the archive as a workflow artifact.
 
 A true native binary also builds and passes the full smoke suites:
 ```bash
-export GRAALVM_HOME=<GraalVM CE for JDK 24>   # Truffle 24.2.x match
+export GRAALVM_HOME=<GraalVM Community 25.2.4 on JDK 25.0.4>
 ./gradlew -PnativeImage :nodel-jyhost:nativeCompile
-# -> nodel-jyhost/build/native/nativeCompile/nodelhost (~400 MB, needs ~14 GB RAM to build)
+# -> nodel-jyhost/build/native/nativeCompile/nodelhost (~300 MB, needs ~12 GB RAM to build)
 ```
 **Caveat (why it's not the shipped artifact):** recipes may interop with any
 Java class (`java.type(...)`), but a native image only contains classes
@@ -222,5 +222,5 @@ round-trips in both directions:
 ```bash
 ./scripts/compat-smoke.sh
 ```
-Useful overrides: `STOCK_NODEL_VERSION` (release tag), `SMOKE_JAVA` (Java 21+
-executable), `JY_PORT`/`GR_PORT`.
+Useful overrides: `STOCK_NODEL_VERSION` (release tag), `SMOKE_JAVA` (GraalVM
+Community 25 executable), `JY_PORT`/`GR_PORT`.

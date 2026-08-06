@@ -27,7 +27,7 @@
 #   STOCK_NODEL_VERSION  release tag to test against (default v2.2.1.542)
 #   STOCK_NODEL_JAR      path to an existing stock jar (skips download)
 #   GRAAL_NODEL_JAR      path to the GraalVM host jar (default: build output)
-#   SMOKE_JAVA           java executable to run both hosts (needs 21+)
+#   SMOKE_JAVA           GraalVM CE 25.2.4 java executable to run both hosts
 #   JY_PORT / GR_PORT    HTTP ports (defaults 8195 / 8196)
 
 set -euo pipefail
@@ -50,8 +50,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ---------------------------------------------------------------- java (21+)
-require_java21
+# ------------------------------------------------------ GraalVM CE 25.2.4
+require_graalvm25
 
 # ---------------------------------------------------------------------- jars
 mkdir -p "$WORK"

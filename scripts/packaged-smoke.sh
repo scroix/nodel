@@ -19,6 +19,8 @@
 #       java-less Docker container in CI)
 #   packaged-smoke.sh verify <port>
 #       run the REST assertions against an already-running host
+#   packaged-smoke.sh runtime <port> <optimized|fallback> [host-error-log]
+#       assert the runtime warning state after the host has initialised
 #
 set -euo pipefail
 
@@ -48,6 +50,9 @@ def local_action_Poke(arg):
     console.info(f'poked: {arg}')
 
 def main():
+    import ctypes
+    ctypes.CDLL(None)
+    console.info('ctypes ready')
     console.info('py demo started')
 EOF
     log "fixture nodes written to $home/nodes"
@@ -68,6 +73,7 @@ verify_host() { # <port>
 
     log "checking both node types initialised"
     wait_console_marker "$port" PyDemo "py demo started" "Python 3 node booted (GraalPy)" || RESULT=1
+    wait_console_marker "$port" PyDemo "ctypes ready" "Python ctypes loaded the current process" || RESULT=1
     wait_console_marker "$port" JSDemo "js demo started" "JavaScript node booted (GraalJS)" || RESULT=1
 
     log "checking bindings are REST-visible"
@@ -96,6 +102,28 @@ verify_host() { # <port>
     return "$RESULT"
 }
 
+verify_runtime_mode() { # <port> <optimized|fallback> [host-error-log]
+    local port="$1" expected="$2" host_log="${3:-}" output
+    output="$(curl -sf "http://127.0.0.1:$port/REST/nodes/PyDemo/console?from=0&max=500" || true)
+$(curl -sf "http://127.0.0.1:$port/REST/nodes/JSDemo/console?from=0&max=500" || true)"
+    if [ -n "$host_log" ] && [ -f "$host_log" ]; then
+        output="$output
+$(cat "$host_log")"
+    fi
+
+    if printf '%s' "$output" | grep -qF 'Use --enable-native-access'; then
+        fail "launcher emitted a native-access warning"
+    fi
+
+    if printf '%s' "$output" | grep -qF 'fallback runtime'; then
+        [ "$expected" = fallback ] || fail "packaged launcher used the interpreter-only fallback runtime"
+        printf 'PASS: launcher reports interpreter-only fallback\n'
+    else
+        [ "$expected" = optimized ] || fail "launcher did not report interpreter-only fallback"
+        printf 'PASS: packaged launcher uses the optimizing runtime\n'
+    fi
+}
+
 case "${1:-}" in
     prepare)
         [ -n "${2:-}" ] || fail "usage: packaged-smoke.sh prepare <home-dir>"
@@ -104,13 +132,25 @@ case "${1:-}" in
     verify)
         [ -n "${2:-}" ] || fail "usage: packaged-smoke.sh verify <port>"
         verify_host "$2"
+        if [ -n "${EXPECT_RUNTIME_MODE:-}" ]; then
+            verify_runtime_mode "$2" "$EXPECT_RUNTIME_MODE"
+        fi
+        ;;
+    runtime)
+        [ -n "${2:-}" ] && [ -n "${3:-}" ] \
+            || fail "usage: packaged-smoke.sh runtime <port> <optimized|fallback> [host-error-log]"
+        verify_runtime_mode "$2" "$3" "${4:-}"
         ;;
     run)
         [ -n "${2:-}" ] || fail "usage: packaged-smoke.sh run <launcher-or-jar> [port]"
         LAUNCHER="$2"
         PORT="${3:-8198}"
         case "$LAUNCHER" in
-            *.jar) require_java21 ;;   # a jar needs a JVM; a launcher brings its own
+            *.jar)
+                # A jar needs GraalVM; a self-contained launcher brings its own runtime.
+                LAUNCHER="$(cd "$(dirname "$LAUNCHER")" && pwd)/$(basename "$LAUNCHER")"
+                require_graalvm25
+                ;;
         esac
         trap cleanup EXIT
         HOME_DIR="$ROOT/build/packaged-smoke/host"
@@ -120,8 +160,9 @@ case "${1:-}" in
         start_host "$HOME_DIR" "$LAUNCHER" "$PORT" 9
         HOST_PID=$STARTED_PID
         verify_host "$PORT"
+        verify_runtime_mode "$PORT" optimized "$HOME_DIR/error.log"
         ;;
     *)
-        fail "usage: packaged-smoke.sh run <launcher-or-jar> [port] | prepare <home-dir> | verify <port>"
+        fail "usage: packaged-smoke.sh run <launcher-or-jar> [port] | prepare <home-dir> | verify <port> | runtime <port> <optimized|fallback> [host-error-log]"
         ;;
 esac

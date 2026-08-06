@@ -49,11 +49,12 @@ jobs:
           fetch-depth: 0
           filter: tree:0
 
-      - name: Setup Java 21
-        uses: actions/setup-java@v4
+      - name: Setup GraalVM CE 25.2.4 on JDK 25.0.4
+        uses: graalvm/setup-graalvm@v1
         with:
-          distribution: temurin
-          java-version: 21
+          distribution: graalvm-community
+          version: '25.2'
+          java-version: '25.0.4'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -83,11 +84,20 @@ jobs:
           fi
 
           ./scripts/packaged-smoke.sh verify 18086 || { docker logs nodel; docker rm -f nodel; exit 1; }
+          docker logs nodel > "$RUNNER_TEMP/nodel-container.log" 2>&1
+          ./scripts/packaged-smoke.sh runtime 18086 optimized "$RUNNER_TEMP/nodel-container.log"
           docker rm -f nodel
 
       - name: Boot + function check on macOS
         if: runner.os == 'macOS'
         run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/jpackage/image/nodelhost.app/Contents/MacOS/nodelhost" 18086
+
+      - name: Standalone jar runtime check
+        if: matrix.include_jar
+        run: |
+          jars=(nodel-jyhost/build/distributions/standalone/nodelhost-*.jar)
+          test "${#jars[@]}" -eq 1
+          SMOKE_JAVA="$JAVA_HOME/bin/java" ./scripts/packaged-smoke.sh run "${jars[0]}" 18087
 
       - name: Stage stable release assets
         env:
@@ -236,7 +246,7 @@ jobs:
           - \`nodelhost-v3-linux-x64.tar.gz\` — Linux x64
           - \`nodelhost-v3-linux-arm64.tar.gz\` — Linux arm64 (Raspberry Pi 4/5 class)
           - \`nodelhost-v3-macos-arm64.zip\` — Apple-silicon macOS
-          - \`nodelhost-v3.jar\` — platform-independent jar; requires Java 21+
+          - \`nodelhost-v3.jar\` — platform-independent jar; requires GraalVM Community 25.2.4
 
           The self-contained packages include Java. Extract one, run the \`nodelhost\` launcher from a directory where Nodel can keep its files, then open http://localhost:8085.
 
