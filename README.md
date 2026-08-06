@@ -111,7 +111,7 @@ The platform-independent nature of Nodel also allows it to easily scale to suit 
 System requirements
 ============
 
-* The **self-contained package** needs no Java at all (bundled runtime) – Linux x64/arm64 and macOS arm64
+* The **self-contained package** needs no Java at all (bundled runtime) – Linux x64/arm64, macOS arm64 and Windows x64
 * The classic jar runs on operating systems supported by GraalVM Community 25.2.4 – including macOS, Windows and Linux
 * A current web browser
 * Made for mobile
@@ -127,9 +127,11 @@ to install first. This is the recommended way to run Nodel on a fresh machine
    * [Linux x64](https://github.com/scroix/nodel/releases/download/v3-tip/nodelhost-v3-linux-x64.tar.gz)
    * [Linux arm64](https://github.com/scroix/nodel/releases/download/v3-tip/nodelhost-v3-linux-arm64.tar.gz) (Raspberry Pi 4/5 class)
    * [macOS arm64](https://github.com/scroix/nodel/releases/download/v3-tip/nodelhost-v3-macos-arm64.zip) (Apple silicon)
+   * [Windows x64](https://github.com/scroix/nodel/releases/download/v3-tip/nodelhost-v3-windows-x64.zip)
 2. **Extract it** somewhere permanent, e.g. your home folder:
    * Linux: `tar xzf nodelhost-v3-linux-*.tar.gz`
    * macOS: double-click the zip, or `unzip nodelhost-v3-macos-arm64.zip`
+   * Windows (PowerShell): `Expand-Archive nodelhost-v3-windows-x64.zip`
 3. **Make a folder for Nodel's files and start it from there** (Nodel keeps
    its nodes and settings in the folder you start it from):
    * Linux:
@@ -145,6 +147,13 @@ to install first. This is the recommended way to run Nodel on a fresh machine
      (first run on macOS may need right-click → Open once, or
      `xattr -dr com.apple.quarantine ~/nodelhost.app`, because the package is
      not code-signed)
+   * Windows (PowerShell):
+     ```powershell
+     mkdir $HOME\nodel-home; cd $HOME\nodel-home
+     $HOME\nodelhost\nodelhost.exe
+     ```
+     (the package is unsigned; if SmartScreen blocks it, choose **More info**
+     and then **Run anyway** once)
 4. **Open http://localhost:8085** in a browser — the Nodel web UI appears.
 5. Drop some [recipes](https://github.com/museumsvictoria/nodel-recipes) into
    the `nodes` folder it created, or add nodes from the web UI. Python 3

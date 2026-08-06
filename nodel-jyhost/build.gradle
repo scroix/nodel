@@ -253,6 +253,9 @@ tasks.register('jpackageAppImage') {
                     // GraalVM module set, including JVMCI and the optimizing compiler.
                     '--add-modules', 'ALL-MODULE-PATH',
                     '--dest', jpackageImageDir.absolutePath]
+        // Windows defaults to a GUI launcher, which discards host console output.
+        if (isWindows)
+            args += '--win-console'
         // same JPMS openings the shadow jar's manifest carries (jpackage launchers
         // don't honour the Add-Opens manifest attribute) + native access for GraalPy;
         // 'nodel.consoleless' tells the host that an instant stdin EOF (double-click,
