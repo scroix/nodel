@@ -59,6 +59,7 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
+import org.graalvm.polyglot.io.IOAccess;
 
 /**
  * Represents a script-enabled Node under GraalVM (replacing Jython).
@@ -670,12 +671,11 @@ public class PyNode extends BaseDynamicNode {
             _pythonContext = Context.newBuilder(_language.id)
                 .allowHostAccess(HostAccess.ALL)
                 .allowHostClassLookup(name -> true)
+                .allowIO(IOAccess.ALL)
+                .allowNativeAccess(true)
                 .hostClassLoader(hostCl)
                 .out(stdoutStream)
                 .err(stderrStream)
-                // without the Graal compiler the fallback runtime warns on every
-                // context; don't spam each node's console with it
-                .option("engine.WarnInterpreterOnly", "false")
                 .build();
             return _pythonContext;
         } catch (Exception e) {

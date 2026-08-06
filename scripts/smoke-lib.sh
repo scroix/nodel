@@ -1,38 +1,43 @@
 # Shared plumbing for the smoke suites (compat-smoke.sh, polyglot-smoke.sh):
-# logging, Java 21+ resolution, host-jar discovery, the FIFO-backed host
+# logging, GraalVM 25 resolution, host-jar discovery, the FIFO-backed host
 # launch and the REST poll/round-trip helpers. Source this file — it defines
 # functions only (no side effects).
 
 log()  { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
-# Prints a Java 21+ executable: the $SMOKE_JAVA override, a Gradle-provisioned
-# toolchain JDK, the system JDK, or bare 'java' as a last resort.
+# Prints a GraalVM 25 executable: the $SMOKE_JAVA override, a Gradle-provisioned
+# toolchain, the system JDK, or bare 'java' as a last resort.
 find_java() {
     if [ -n "${SMOKE_JAVA:-}" ]; then echo "$SMOKE_JAVA"; return; fi
-    # a JDK 21 the Gradle toolchain provisioned earlier
+    # a GraalVM 25 toolchain Gradle provisioned earlier
     local candidate
     while IFS= read -r candidate; do
         [ -x "$candidate" ] || continue
-        if "$candidate" -version 2>&1 | grep -qE 'version "(2[1-9]|[3-9][0-9])'; then
+        if "$candidate" -version 2>&1 | grep -qE '^(openjdk|java)( version)? "?25' \
+                && "$candidate" -version 2>&1 | grep -q 'GraalVM CE 25\.2\.4'; then
             echo "$candidate"; return
         fi
     done < <(find "$HOME/.gradle/jdks" -name java -type f -path '*/bin/java' 2>/dev/null)
-    # a system JDK 21
+    # a system GraalVM 25
     if command -v /usr/libexec/java_home >/dev/null 2>&1; then
-        if home=$(/usr/libexec/java_home -v 21+ 2>/dev/null); then
-            echo "$home/bin/java"; return
+        if home=$(/usr/libexec/java_home -v 25+ 2>/dev/null); then
+            if "$home/bin/java" -version 2>&1 | grep -q 'GraalVM CE 25\.2\.4'; then
+                echo "$home/bin/java"; return
+            fi
         fi
     fi
     command -v java || true
 }
 
-# Resolves and validates $JAVA (needs 21+ to run the GraalVM host).
-require_java21() {
+# Resolves and validates $JAVA (the supported host runtime is GraalVM CE 25.2.4).
+require_graalvm25() {
     JAVA="$(find_java)"
     [ -n "$JAVA" ] || fail "no java found; set SMOKE_JAVA"
-    "$JAVA" -version 2>&1 | grep -qE 'version "(2[1-9]|[3-9][0-9])' \
-        || fail "need Java 21+ to run the GraalVM host; found: $("$JAVA" -version 2>&1 | head -1). Set SMOKE_JAVA."
+    "$JAVA" -version 2>&1 | grep -qE '^(openjdk|java)( version)? "?25' \
+        || fail "need GraalVM CE 25.2.4 to run the host; found: $("$JAVA" -version 2>&1 | head -1). Set SMOKE_JAVA."
+    "$JAVA" -version 2>&1 | grep -q 'GraalVM CE 25\.2\.4' \
+        || fail "need GraalVM CE 25.2.4 to run the host; found a different Java distribution. Set SMOKE_JAVA."
     log "using java: $JAVA"
 }
 

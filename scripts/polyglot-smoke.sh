@@ -17,7 +17,7 @@
 #
 # Environment overrides:
 #   GRAAL_NODEL_JAR      path to the GraalVM host jar (default: build output)
-#   SMOKE_JAVA           java executable (needs 21+)
+#   SMOKE_JAVA           GraalVM CE 25.2.4 java executable
 #   PG_PORT              HTTP port (default 8197)
 
 set -euo pipefail
@@ -36,8 +36,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ---------------------------------------------------------------- java (21+)
-require_java21
+# ------------------------------------------------------ GraalVM CE 25.2.4
+require_graalvm25
 
 # ---------------------------------------------------------------------- jar
 mkdir -p "$WORK"

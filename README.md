@@ -12,7 +12,7 @@
     <a href="https://github.com/museumsvictoria/nodel/releases">
       <img src="https://img.shields.io/github/downloads/museumsvictoria/nodel/total?logo=github" alt="Total downloads">
     </a>
-    <img src="https://img.shields.io/badge/Java-21%2B-orange.svg" alt="Requires Java 21+">
+    <img src="https://img.shields.io/badge/GraalVM%20CE-25.2.4-orange.svg" alt="Requires GraalVM Community 25.2.4">
   </p>
 
 </div>
@@ -112,7 +112,7 @@ System requirements
 ============
 
 * The **self-contained package** needs no Java at all (bundled runtime) – Linux x64/arm64 and macOS arm64
-* The classic jar runs on any operating system with a Java 21+ runtime – including OS X, Windows or Linux
+* The classic jar runs on operating systems supported by GraalVM Community 25.2.4 – including macOS, Windows and Linux
 * A current web browser
 * Made for mobile
 
@@ -152,12 +152,14 @@ to install first. This is the recommended way to run Nodel on a fresh machine
 
 To stop Nodel, press Enter in its console (or just close the terminal).
 The [v3 tip prerelease](https://github.com/scroix/nodel/releases/tag/v3-tip)
-also includes a plain `nodelhost-v3.jar` for machines with Java 21+ installed.
+also includes a plain `nodelhost-v3.jar` for machines with GraalVM Community
+25.2.4 installed. Both forms use the optimizing runtime; the self-contained
+packages are recommended because they carry the matching runtime with them.
 
 Quick start (classic jar)
 =========================
 ![5b4c2e9005ffc](https://i.loli.net/2018/07/16/5b4c2e9005ffc.gif)
-* **download a [release](https://github.com/museumsvictoria/nodel/releases)** (needs Java 21+ installed)
+* **download a [release](https://github.com/museumsvictoria/nodel/releases)** (needs GraalVM Community 25.2.4 installed)
 * open a console
 * `java -jar nodel.jar`
 * drop some [recipes](https://github.com/museumsvictoria/nodel-recipes) into `nodes` folder
@@ -170,7 +172,7 @@ Building and releases
 
 Notes
 =====
-* the self-contained package requires no Java install; the classic jar on this branch requires **Java 21+** (available from [Adoptium](https://adoptium.net/))
+* the self-contained package requires no Java install; the classic jar on this branch requires **GraalVM Community 25.2.4**
 * for service / daemon use, see [wiki pages](https://github.com/museumsvictoria/nodel/wiki)
 * check `bootstrap` files for startup config
 

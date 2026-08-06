@@ -3,16 +3,29 @@ plugins {
     id 'application'
     id 'maven-publish'
     id 'eclipse'
-    id 'org.graalvm.buildtools.native' version '0.10.6'
-    id 'com.gradleup.shadow' version '8.3.5'
+    id 'org.graalvm.buildtools.native' version '1.1.5'
+    id 'com.gradleup.shadow' version '8.3.11'
     // NOTE: the 'org.graalvm.python' plugin is deliberately NOT applied — it is only
     // needed to vendor pip packages into the jar and it forces a Java 17+ Gradle
-    // daemon; the GraalPy runtime + stdlib come from the org.graalvm.python:python
+    // daemon; the GraalPy runtime + stdlib come from the org.graalvm.polyglot:python
     // dependency below
 }
 
-// Adjust these versions to the latest available
-def polyglotVersion = '24.2.0' // or newer
+def polyglotVersion = '25.2.4'
+
+// GraalPy's Maven language jar is published with a Linux/x64 ABI descriptor,
+// while python-resources contains native modules for every supported platform.
+// Put the descriptor for the current build platform first on the application
+// classpath so native standard-library modules (notably _ctypes) are loadable.
+def graalPyMultiarch = {
+    def os = System.getProperty('os.name').toLowerCase()
+    def arch = System.getProperty('os.arch').toLowerCase()
+    if (os.contains('linux') && ['amd64', 'x86_64'].contains(arch)) return 'x86_64-linux'
+    if (os.contains('linux') && ['aarch64', 'arm64'].contains(arch)) return 'aarch64-linux'
+    if ((os.contains('mac') || os.contains('darwin')) && ['aarch64', 'arm64'].contains(arch)) return 'aarch64-darwin'
+    if (os.contains('windows') && ['amd64', 'x86_64'].contains(arch)) return 'x86_64-win32'
+    throw new GradleException("GraalPy 25.2 native modules do not support ${os}/${arch}")
+}()
 
 // JPMS openings required by GraalPy embedding (mirrors the 'run' task and the
 // shadow jar's Add-Opens manifest attribute)
@@ -24,28 +37,6 @@ def graalpyAddOpens = [
         '--add-opens=java.base/java.nio=ALL-UNNAMED',
         '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED'
 ]
-
-configurations.all {
-    resolutionStrategy {
-        force "org.graalvm.polyglot:polyglot:${polyglotVersion}"
-        force "org.graalvm.polyglot:python:${polyglotVersion}"
-    }
-}
-
-// Native Image build (experimental; see POLYGLOT_INTEGRATION.md §goal-3): the
-// default 'python'/'js' artifacts are the Oracle GraalVM flavours whose bundled
-// native-image config force-enables the (absent-on-CE) Truffle enterprise
-// feature. Building a native image on GraalVM CE needs the '-community'
-// variants, swapped in only for such builds so the shipped jar is unchanged.
-//   ./gradlew -PnativeImage :nodel-jyhost:nativeCompile   (GRAALVM_HOME = GraalVM CE for JDK 24)
-if (project.hasProperty('nativeImage')) {
-    configurations.all {
-        resolutionStrategy.dependencySubstitution {
-            substitute module('org.graalvm.python:python') using module("org.graalvm.python:python-community:${polyglotVersion}")
-            substitute module('org.graalvm.js:js') using module("org.graalvm.js:js-community:${polyglotVersion}")
-        }
-    }
-}
 
 repositories {
     mavenCentral()
@@ -89,14 +80,12 @@ dependencies {
     implementation 'joda-time:joda-time:2.14.0'
 
     // ------------------------------------------------------------------
-    // GraalVM for JDK 21 dependencies for embedding polyglot Python
+    // GraalVM 25.2 dependencies for embedding polyglot Python and JavaScript
     // ------------------------------------------------------------------
 
-    implementation "org.graalvm.python:python:${polyglotVersion}"
     implementation "org.graalvm.polyglot:polyglot:${polyglotVersion}"
-
-    // GraalJS — enables 'script.js' nodes alongside 'script.py' (community artifacts)
-    implementation "org.graalvm.js:js:${polyglotVersion}"
+    implementation "org.graalvm.polyglot:python:${polyglotVersion}"
+    implementation "org.graalvm.polyglot:js:${polyglotVersion}"
 
     // Playwright e2e testing
     testImplementation 'com.microsoft.playwright:playwright:1.52.0'
@@ -128,6 +117,36 @@ jar {
     }
 }
 
+processResources {
+    inputs.property('graalPyVersion', polyglotVersion)
+    inputs.property('graalPyMultiarch', graalPyMultiarch)
+    doLast {
+        def languageJar = configurations.runtimeClasspath.files.find {
+            it.name == "python-language-${polyglotVersion}.jar"
+        }
+        if (languageJar == null)
+            throw new GradleException("python-language-${polyglotVersion}.jar is missing from runtimeClasspath")
+
+        byte[] published
+        new java.util.jar.JarFile(languageJar).withCloseable { jarFile ->
+            published = jarFile.getInputStream(jarFile.getJarEntry('graalpy_versions')).readAllBytes()
+        }
+        // PythonLanguage consumes seven encoded version bytes before reading the
+        // newline-delimited ABI fields that follow.
+        def publishedLines = new String(published, 7, published.length - 7,
+                java.nio.charset.StandardCharsets.US_ASCII).split('\\R', -1)
+        def abi = publishedLines[0]
+        def soabi = "${abi}-native-${graalPyMultiarch}"
+        def extension = ".${soabi}.${graalPyMultiarch.endsWith('win32') ? 'pyd' : 'so'}"
+        def platformDescriptor = "${abi}\n${publishedLines[1]}\n${soabi}\n${extension}\n${graalPyMultiarch}\n"
+
+        def output = new ByteArrayOutputStream()
+        output.write(published, 0, 7)
+        output.write(platformDescriptor.getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+        new File(destinationDir, 'graalpy_versions').bytes = output.toByteArray()
+    }
+}
+
 
 shadowJar {
     archiveBaseName = 'nodelhost'
@@ -141,7 +160,10 @@ shadowJar {
                 'Implementation-Version': archiveVersion,
                 'Main-Class': application.mainClass,
                 // lets 'java -jar nodelhost.jar' run without explicit --add-opens flags
-                'Add-Opens': graalpyAddOpens.collect { it.replace('--add-opens=', '').replace('=ALL-UNNAMED', '') }.join(' ')
+                'Add-Opens': graalpyAddOpens.collect { it.replace('--add-opens=', '').replace('=ALL-UNNAMED', '') }.join(' '),
+                'Enable-Native-Access': 'ALL-UNNAMED',
+                // Truffle 25 ships versioned classes that must stay visible in the fat jar.
+                'Multi-Release': 'true'
         )
     }
 
@@ -163,11 +185,15 @@ shadowJar {
     exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
 }
 
-// Configure JVM arguments for the run task to handle JPMS restrictions
+def graalpyBaseJvmArgs = graalpyAddOpens + ['--enable-native-access=ALL-UNNAMED']
+def graalpyJvmArgs = { graalpyBaseJvmArgs }
+
+// The GraalVM 25 toolchain supplies its optimizing runtime without extra flags.
 run {
     standardInput = System.in
-
-    jvmArgs = graalpyAddOpens + ['--enable-native-access=ALL-UNNAMED']
+    doFirst {
+        jvmArgs = graalpyJvmArgs()
+    }
 }
 
 tasks.build.dependsOn tasks.shadowJar
@@ -204,7 +230,8 @@ tasks.register('jpackageAppImage') {
     doLast {
         def jarFile = tasks.shadowJar.archiveFile.get().asFile
 
-        // jpackage copies EVERYTHING in --input into the image: stage the one jar alone
+        // jpackage copies everything in --input into $APPDIR. The application stays
+        // as one fat jar and the GraalVM toolchain supplies the optimizing runtime.
         def stagingDir = new File(buildDir, 'jpackage/staging')
         delete stagingDir
         stagingDir.mkdirs()
@@ -222,15 +249,18 @@ tasks.register('jpackageAppImage') {
                     '--app-version', rootProject.ext.baseVersion,
                     '--input', stagingDir.absolutePath,
                     '--main-jar', jarFile.name,
+                    // Recipes may interop with arbitrary JDK classes. Keep the complete
+                    // GraalVM module set, including JVMCI and the optimizing compiler.
+                    '--add-modules', 'ALL-MODULE-PATH',
                     '--dest', jpackageImageDir.absolutePath]
         // same JPMS openings the shadow jar's manifest carries (jpackage launchers
         // don't honour the Add-Opens manifest attribute) + native access for GraalPy;
         // 'nodel.consoleless' tells the host that an instant stdin EOF (double-click,
         // nohup, docker -d) is not a shutdown request — see Launch.tryReadFromConsole
-        (graalpyAddOpens + ['--enable-native-access=ALL-UNNAMED', '-Dnodel.consoleless=true']).each {
+        (graalpyBaseJvmArgs + ['-Dnodel.consoleless=true']).each {
             args += ['--java-options', it]
         }
-        exec { commandLine args }
+        providers.exec { commandLine args }.result.get().assertNormalExitValue()
 
         logger.lifecycle("app-image: " + jpackageImageDir.listFiles().collect { it.name }.join(', '))
     }
@@ -263,7 +293,10 @@ tasks.register('packageAppImage') {
         def archiveCmd = os == 'linux' ? ['tar', 'czf', archive.absolutePath, topDir]
                 : os == 'macos' ? ['zip', '-qry', archive.absolutePath, topDir]
                 : ['powershell', '-Command', "Compress-Archive -Path ${topDir} -DestinationPath '${archive.absolutePath}'"]
-        exec { workingDir jpackageImageDir; commandLine archiveCmd }
+        providers.exec {
+            workingDir jpackageImageDir
+            commandLine archiveCmd
+        }.result.get().assertNormalExitValue()
 
         logger.lifecycle("distributable: " + outDir.listFiles().collect { it.name }.join(', '))
     }
@@ -271,7 +304,7 @@ tasks.register('packageAppImage') {
 
 // ------------------------------------------------------------------
 // GraalVM Native Image Configuration
-// (Requires GraalVM for JDK 21 or later when building native images.)
+// (Requires GraalVM Community 25.2.x when building native images.)
 // ------------------------------------------------------------------
 graalvmNative {
 
@@ -343,8 +376,9 @@ tasks.register('startNodelhost') {
             logger.lifecycle("Using multicast AutoDNS for tests (NODEL_TEST_DISCOVERY enabled)")
         }
 
-        def args = [javaExe, '-cp', hostClasspath, '-ea']
-        args.addAll(graalpyAddOpens)
+        def args = [javaExe]
+        args.addAll(graalpyJvmArgs())
+        args.addAll(['-cp', hostClasspath, '-ea'])
         if (useLocalDiscovery) {
             args.add('-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance')
         }
@@ -435,7 +469,6 @@ tasks.register('playwrightInstall', JavaExec) {
 test {
     dependsOn 'startNodelhost'
     useJUnitPlatform()
-    jvmArgs graalpyAddOpens
     // GraalPy contexts are memory-hungry and some tests boot host singletons;
     // isolate each test class in its own worker JVM with enough heap
     forkEvery = 1
@@ -453,7 +486,6 @@ task integrationTest(type: Test) {
     useJUnitPlatform {
         excludeTags 'e2e'
     }
-    jvmArgs graalpyAddOpens
     forkEvery = 1
     maxHeapSize = '2g'
     testLogging {
@@ -469,7 +501,6 @@ task e2eTest(type: Test) {
     useJUnitPlatform {
         includeTags 'e2e'
     }
-    jvmArgs graalpyAddOpens
     forkEvery = 1
     maxHeapSize = '2g'
     testLogging {
@@ -477,4 +508,10 @@ task e2eTest(type: Test) {
         showStandardStreams = true
     }
     finalizedBy 'stopNodelhost'
+}
+
+tasks.withType(Test).configureEach {
+    doFirst {
+        jvmArgs graalpyJvmArgs()
+    }
 }

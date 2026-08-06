@@ -34,16 +34,17 @@ When running these smoke tests with an AI agent (Claude Code, etc.):
 | Step | Command / Action | Notes |
 |------|------------------|-------|
 | 1 | `cd` to the repo root | All commands assume it. |
-| 2 | `java -version` | **Running** the host needs JDK 21+. Building only needs JDK 11+ on the PATH to bootstrap Gradle — the build auto-provisions a Java 21 toolchain (see BUILDING.md). |
+| 2 | `java -version` | **Running** the jar needs GraalVM Community 25.2.4. Building only needs JDK 17+ on the PATH to bootstrap Gradle — the build auto-provisions the matching GraalVM toolchain (see BUILDING.md). |
 | 3 | Ports | The manual smoke host uses **8089**; the gradle test suite owns **18085** (and kills anything on it — don't park your own host there). |
 | 4 | `export BASE=http://127.0.0.1:8089` | Used by every curl below. |
 
 ### Pre-flight Verification
 
 ```bash
-# 1. JDK present and 21+ (needed to run the built host; Gradle self-provisions its own toolchain)
+# 1. GraalVM Community 25.2.4 present (needed to run the built jar;
+#    Gradle self-provisions its own toolchain)
 java -version
-# Expected: 'openjdk version "21...' or later
+# Expected: 'OpenJDK Runtime Environment GraalVM CE 25.2.4'
 
 # 2. Smoke port free (kill leftovers from a previous run)
 lsof -ti :8089 | xargs kill 2>/dev/null; rm -rf /tmp/nodel-smoke-host
@@ -109,13 +110,13 @@ classpath so discovery is deterministic.
 
 **Two v3 launch requirements** (both handled by the commands below):
 
-1. **Java 21+.** If the PATH `java` is older, use the toolchain Gradle provisioned during §1:
+1. **GraalVM Community 25.2.4.** If PATH points to another JDK, use the toolchain Gradle provisioned during §1:
 
    ```bash
-   JAVA=java   # keep if `java -version` says 21+
-   java -version 2>&1 | grep -qE '"(2[1-9]|[3-9][0-9])' || JAVA=$(find ~/.gradle/jdks -type f -path "*/bin/java" 2>/dev/null | head -1)
+   JAVA=java   # keep if `java -version` says GraalVM CE 25.2.4
+   java -version 2>&1 | grep -q 'GraalVM CE 25.2.4' || JAVA=$(find ~/.gradle/jdks -type f -path "*graalvm*/bin/java" 2>/dev/null | head -1)
    "$JAVA" -version
-   # Expected: openjdk version "21..." or later
+   # Expected: OpenJDK Runtime Environment GraalVM CE 25.2.4
    ```
 
 2. **GraalPy `--add-opens` flags.** The standalone jar's manifest carries an `Add-Opens`
@@ -123,8 +124,11 @@ classpath so discovery is deterministic.
    test-fixtures jar) requires them explicitly:
 
    ```bash
-   ADD_OPENS="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+   ADD_OPENS="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --enable-native-access=ALL-UNNAMED"
    ```
+
+   The matching GraalVM supplies LibGraal, so the standalone/classpath launch
+   remains optimized and must not print the fallback-runtime warning.
 
 **Option A — Claude Preview MCP** (preferred for agents; the same server then backs §7's browser
 checks). Create `.claude/launch.json` (untracked — delete it in §9):
@@ -138,7 +142,7 @@ checks). Create `.claude/launch.json` (untracked — delete it in §9):
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "REPO=\"$PWD\"; JAVA=java; java -version 2>&1 | grep -qE '\"(2[1-9]|[3-9][0-9])' || JAVA=$(find ~/.gradle/jdks -type f -path '*/bin/java' 2>/dev/null | head -1); mkdir -p /tmp/nodel-smoke-host/nodes; cd /tmp/nodel-smoke-host; tail -f /dev/null | \"$JAVA\" -cp \"$(ls \"$REPO\"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar | head -1):$(ls \"$REPO\"/nodel-framework/build/libs/*test-fixtures*.jar | head -1)\" --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED '-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance' org.nodel.jyhost.Launch -p 8089"
+        "REPO=\"$PWD\"; JAVA=java; java -version 2>&1 | grep -q 'GraalVM CE 25.2.4' || JAVA=$(find ~/.gradle/jdks -type f -path '*graalvm*/bin/java' 2>/dev/null | head -1); mkdir -p /tmp/nodel-smoke-host/nodes; cd /tmp/nodel-smoke-host; tail -f /dev/null | \"$JAVA\" -cp \"$(ls \"$REPO\"/nodel-jyhost/build/distributions/standalone/nodelhost-*.jar | head -1):$(ls \"$REPO\"/nodel-framework/build/libs/*test-fixtures*.jar | head -1)\" --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --enable-native-access=ALL-UNNAMED '-Dorg.nodel.discovery.impl=org.nodel.discovery.LocalAutoDNS;instance' org.nodel.jyhost.Launch -p 8089"
       ],
       "port": 8089
     }
@@ -589,7 +593,7 @@ them).
 | Issue | Solution |
 |-------|----------|
 | Host fails at startup with `InaccessibleObjectException` / `module java.base does not "opens ..."` | Launched with `-cp` but without the GraalPy `--add-opens` flags (the jar manifest's `Add-Opens` only applies to `java -jar`). Use the §2 commands verbatim. |
-| `UnsupportedClassVersionError` (class file version 65.0) at startup | PATH `java` is older than 21. Resolve `$JAVA` per §2 (Gradle-provisioned toolchain under `~/.gradle/jdks`). |
+| `UnsupportedClassVersionError` (class file version 69.0) or a fallback-runtime warning at startup | PATH `java` is not the matching GraalVM Community 25.2.4 runtime. Resolve `$JAVA` per §2 (Gradle-provisioned toolchain under `~/.gradle/jdks`). |
 | Host exits immediately when backgrounded | Stdin closed. Keep it open: `tail -f /dev/null \| java ...` (see §2). |
 | Node doesn't appear after copying into `nodes/` | The directory scan runs every few seconds; poll the node's `/console` endpoint for up to ~30s (observed 7–11s) before concluding failure. |
 | 404 `EndpointNotFoundException` right after a rename | The node reloads and re-registers under the new name; poll `$BASE/REST/nodes` until it lists the new name, then continue. |
