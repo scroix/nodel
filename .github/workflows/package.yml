@@ -39,6 +39,11 @@ jobs:
             runner: macos-latest
             asset: nodelhost-v3-macos-arm64.zip
             include_jar: false
+          - id: windows-x64
+            name: Windows x64
+            runner: windows-latest
+            asset: nodelhost-v3-windows-x64.zip
+            include_jar: false
 
     steps:
       - name: Checkout
@@ -92,6 +97,62 @@ jobs:
         if: runner.os == 'macOS'
         run: ./scripts/packaged-smoke.sh run "$PWD/nodel-jyhost/build/jpackage/image/nodelhost.app/Contents/MacOS/nodelhost" 18086
 
+      - name: Verify archive + boot + function check on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $archives = @(Get-ChildItem 'nodel-jyhost/build/distributions/app-image/*.zip')
+          if ($archives.Count -ne 1) {
+            throw "Expected exactly one app-image archive, found $($archives.Count)"
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($archives[0].FullName)
+          try {
+            $entries = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+            if ($entries -notcontains 'nodelhost/nodelhost.exe') {
+              throw 'Archive is missing nodelhost/nodelhost.exe'
+            }
+            if (-not ($entries | Where-Object { $_ -like 'nodelhost/runtime/*' })) {
+              throw 'Archive is missing the bundled nodelhost/runtime tree'
+            }
+          } finally {
+            $zip.Dispose()
+          }
+
+          $homeRelative = 'build/packaged-smoke/windows-host'
+          & bash ./scripts/packaged-smoke.sh prepare $homeRelative
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to prepare smoke fixtures' }
+
+          $homeDir = (Resolve-Path $homeRelative).Path
+          $stdout = Join-Path $homeDir 'output.log'
+          $stderr = Join-Path $homeDir 'error.log'
+          $launcher = (Resolve-Path 'nodel-jyhost/build/jpackage/image/nodelhost/nodelhost.exe').Path
+          $process = Start-Process -FilePath $launcher -ArgumentList @('-p', '18086') `
+            -WorkingDirectory $homeDir -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr -PassThru
+
+          try {
+            & bash ./scripts/packaged-smoke.sh verify 18086
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged host smoke checks failed' }
+
+            & bash ./scripts/packaged-smoke.sh runtime 18086 optimized "$homeRelative/error.log"
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged host runtime check failed' }
+
+            if (-not (Select-String -Path $stdout -Pattern 'Nodel \[GraalPython\]' -Quiet)) {
+              throw 'Console launcher produced no startup banner'
+            }
+          } finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+              $process.WaitForExit()
+            }
+            if (Test-Path $stdout) { Get-Content $stdout }
+            if (Test-Path $stderr) { Get-Content $stderr }
+          }
+
       - name: Standalone jar runtime check
         if: matrix.include_jar
         run: |
@@ -100,6 +161,7 @@ jobs:
           SMOKE_JAVA="$JAVA_HOME/bin/java" ./scripts/packaged-smoke.sh run "${jars[0]}" 18087
 
       - name: Stage stable release assets
+        shell: bash
         env:
           ASSET_NAME: ${{ matrix.asset }}
           INCLUDE_JAR: ${{ matrix.include_jar }}
@@ -214,6 +276,7 @@ jobs:
             nodelhost-v3-linux-x64.tar.gz
             nodelhost-v3-linux-arm64.tar.gz
             nodelhost-v3-macos-arm64.zip
+            nodelhost-v3-windows-x64.zip
             nodelhost-v3.jar
           )
           for asset in "${expected[@]}"; do
@@ -246,6 +309,7 @@ jobs:
           - \`nodelhost-v3-linux-x64.tar.gz\` — Linux x64
           - \`nodelhost-v3-linux-arm64.tar.gz\` — Linux arm64 (Raspberry Pi 4/5 class)
           - \`nodelhost-v3-macos-arm64.zip\` — Apple-silicon macOS
+          - \`nodelhost-v3-windows-x64.zip\` — Windows x64
           - \`nodelhost-v3.jar\` — platform-independent jar; requires GraalVM Community 25.2.4
 
           The self-contained packages include Java. Extract one, run the \`nodelhost\` launcher from a directory where Nodel can keep its files, then open http://localhost:8085.
@@ -255,6 +319,8 @@ jobs:
           \`\`\`sh
           xattr -dr com.apple.quarantine ~/nodelhost.app
           \`\`\`
+
+          The Windows build is unsigned. If Microsoft Defender SmartScreen blocks it, choose **More info** and then **Run anyway**.
           EOF
 
       - name: Upload release

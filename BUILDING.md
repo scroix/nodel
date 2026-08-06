@@ -181,9 +181,10 @@ NODEL_TEST_DISCOVERY=1 ./gradlew :nodel-jyhost:integrationTest --tests org.nodel
 `./gradlew :nodel-jyhost:packageAppImage` builds a **jpackage app-image** —
 the standalone jar plus a bundled GraalVM Community runtime — and archives it under
 `nodel-jyhost/build/distributions/app-image/` (`.tar.gz` on Linux, `.zip` on
-macOS). The image itself is left in `nodel-jyhost/build/jpackage/image/`
+macOS and Windows). The image itself is left in `nodel-jyhost/build/jpackage/image/`
 (launcher: `nodelhost/bin/nodelhost` on Linux,
-`nodelhost.app/Contents/MacOS/nodelhost` on macOS). The plain
+`nodelhost.app/Contents/MacOS/nodelhost` on macOS, and
+`nodelhost/nodelhost.exe` on Windows). The plain
 `build`→runnable-jar flow is unaffected; packaging is additive.
 
 Verify a packaged launcher with the deterministic functional gate:
@@ -195,9 +196,10 @@ not ending in `.jar` is executed directly):
 ```bash
 GRAAL_NODEL_JAR=$PWD/nodel-jyhost/build/jpackage/image/nodelhost/bin/nodelhost ./scripts/compat-smoke.sh
 ```
-CI (`.github/workflows/package.yml`) builds the Linux x64 package on every
-push, smokes it inside a java-less `debian:bookworm-slim` container, then
-uploads the archive as a workflow artifact.
+CI (`.github/workflows/package.yml`) builds Linux x64/arm64, macOS arm64 and
+Windows x64 packages. Windows uses its console launcher and a detached
+PowerShell process because the Bash smoke helper's FIFO launch is not reliable
+under Git Bash; the existing fixture preparation and REST checks are reused.
 
 ### Experimental: GraalVM Native Image
 
