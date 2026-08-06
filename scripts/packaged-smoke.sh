@@ -51,7 +51,8 @@ def local_action_Poke(arg):
 
 def main():
     import ctypes
-    ctypes.CDLL(None)
+    import os
+    ctypes.CDLL('kernel32.dll' if os.name == 'nt' else None)
     console.info('ctypes ready')
     console.info('py demo started')
 EOF
@@ -65,7 +66,7 @@ verify_host() { # <port>
     wait_http "$port" "packaged host"
 
     log "checking web UI is served"
-    if curl -sf "http://127.0.0.1:$port/" | grep -qi 'nodel'; then
+    if curl -sf "http://127.0.0.1:$port/" | grep -i 'nodel' >/dev/null; then
         echo "PASS: web UI index served"
     else
         echo "FAIL: web UI index missing or empty" >&2; RESULT=1
@@ -73,16 +74,16 @@ verify_host() { # <port>
 
     log "checking both node types initialised"
     wait_console_marker "$port" PyDemo "py demo started" "Python 3 node booted (GraalPy)" || RESULT=1
-    wait_console_marker "$port" PyDemo "ctypes ready" "Python ctypes loaded the current process" || RESULT=1
+    wait_console_marker "$port" PyDemo "ctypes ready" "Python ctypes loaded a native library" || RESULT=1
     wait_console_marker "$port" JSDemo "js demo started" "JavaScript node booted (GraalJS)" || RESULT=1
 
     log "checking bindings are REST-visible"
-    if curl -sf "http://127.0.0.1:$port/REST/nodes/PyDemo/actions" | grep -q '"SendPing"'; then
+    if curl -sf "http://127.0.0.1:$port/REST/nodes/PyDemo/actions" | grep '"SendPing"' >/dev/null; then
         echo "PASS: Python actions extracted"
     else
         echo "FAIL: Python actions not extracted" >&2; RESULT=1
     fi
-    if curl -sf "http://127.0.0.1:$port/REST/nodes/JSDemo/events" | grep -q '"Ping"'; then
+    if curl -sf "http://127.0.0.1:$port/REST/nodes/JSDemo/events" | grep '"Ping"' >/dev/null; then
         echo "PASS: JS events extracted"
     else
         echo "FAIL: JS events not extracted" >&2; RESULT=1
@@ -111,11 +112,11 @@ $(curl -sf "http://127.0.0.1:$port/REST/nodes/JSDemo/console?from=0&max=500" || 
 $(cat "$host_log")"
     fi
 
-    if printf '%s' "$output" | grep -qF 'Use --enable-native-access'; then
+    if printf '%s' "$output" | grep -F 'Use --enable-native-access' >/dev/null; then
         fail "launcher emitted a native-access warning"
     fi
 
-    if printf '%s' "$output" | grep -qF 'fallback runtime'; then
+    if printf '%s' "$output" | grep -F 'fallback runtime' >/dev/null; then
         [ "$expected" = fallback ] || fail "packaged launcher used the interpreter-only fallback runtime"
         printf 'PASS: launcher reports interpreter-only fallback\n'
     else

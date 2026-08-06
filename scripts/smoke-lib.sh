@@ -92,7 +92,7 @@ invoke() { # <port> <node> <action> <arg>
 }
 
 console_contains() { # <port> <node> <text>
-    curl -sf "http://127.0.0.1:$1/REST/nodes/$2/console?from=0&max=500" | grep -qF "$3"
+    curl -sf "http://127.0.0.1:$1/REST/nodes/$2/console?from=0&max=500" | grep -F "$3" >/dev/null
 }
 
 # poll until a node's console shows a marker (e.g. a boot message)
