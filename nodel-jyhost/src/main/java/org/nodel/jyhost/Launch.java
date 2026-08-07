@@ -12,6 +12,8 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.net.BindException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.channels.FileLock;
 
@@ -275,13 +277,18 @@ public class Launch {
             Nodel.setDisableServerAdvertisements(true);
         }
 
+        Nodel.setLocalInterfaceOnly(_bootstrapConfig.getLocalInterfaceOnly());
+
         // use specific Nodel Messaging TCP port? (and UDP which is reserved for future use)
         int requestedMessagingPort = _bootstrapConfig.getMessagingPort();
         if (requestedMessagingPort > 0) {
             // best to quickly check port availability if fixed ports are being used and choose to fail
             // immediately.
-            try {
-                ServerSocket ss = new ServerSocket(requestedMessagingPort);
+            try (ServerSocket ss = new ServerSocket()) {
+                InetSocketAddress bindAddress = _bootstrapConfig.getLocalInterfaceOnly()
+                        ? new InetSocketAddress(InetAddress.getLoopbackAddress(), requestedMessagingPort)
+                        : new InetSocketAddress(requestedMessagingPort);
+                ss.bind(bindAddress);
                 ss.close();
             } catch (Exception exc) {
                 throw new IOException("Could not bind Nodel Messaging port on TCP "
@@ -334,7 +341,10 @@ public class Launch {
         // or one attempt to bind to a requested one.
         for (int a = 0; a < 2; a++) {
             try {
-                nodelHostHTTPD = new NodelHostHTTPD(tryPort, embeddedContentDirectory);
+                nodelHostHTTPD = new NodelHostHTTPD(
+                        tryPort,
+                        embeddedContentDirectory,
+                        _bootstrapConfig.getLocalInterfaceOnly());
                 nodelHostHTTPD.setFirstChoiceDir(customContentDirectory);
                 nodelHostHTTPD.setNodeHost(_nodelHost);
 

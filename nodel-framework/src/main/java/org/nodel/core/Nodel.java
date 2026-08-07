@@ -304,9 +304,22 @@ public class Nodel {
      */
     public static void updateMessagingPort(int value) {
         s_messagingPort = value;
-    }    
-    
-    
+    }
+
+    /**
+     * Whether host listeners should only bind to loopback.
+     */
+    private static boolean s_localInterfaceOnly = false;
+
+    public static boolean getLocalInterfaceOnly() {
+        return s_localInterfaceOnly;
+    }
+
+    public static void setLocalInterfaceOnly(boolean value) {
+        s_localInterfaceOnly = value;
+    }
+
+
     /**
      * (see public getter / setter)
      */

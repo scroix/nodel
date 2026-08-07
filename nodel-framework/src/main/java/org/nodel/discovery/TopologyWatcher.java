@@ -202,10 +202,7 @@ public class TopologyWatcher {
         String[] optInList = Nodel.getInterfacesToUse();
         listValidInterfaces(activeSet, optInList);
 
-        // add the IPv4 Loopback interface if no interfaces present
-        // (whether automatic- or opt-in- mode)
-        if (activeSet.size() == 0)
-            activeSet.add(IPv4Loopback);
+        applyInterfaceScope(activeSet, Nodel.getLocalInterfaceOnly());
 
         // new interfaces
         List<InetAddress> newly = new ArrayList<>(activeSet.size());
@@ -296,6 +293,15 @@ public class TopologyWatcher {
         // move 'new' to existing
         if (newHandlers != null)
             _onChangeHandlers.addAll(newHandlers);
+    }
+
+    static void applyInterfaceScope(Set<InetAddress> activeSet, boolean localInterfaceOnly) {
+        if (localInterfaceOnly)
+            activeSet.clear();
+
+        // Always retain loopback if no external interfaces remain.
+        if (activeSet.size() == 0)
+            activeSet.add(IPv4Loopback);
     }
 
     /**

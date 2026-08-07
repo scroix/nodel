@@ -24,6 +24,7 @@ import org.nodel.Handler;
 import org.nodel.Random;
 import org.nodel.SimpleName;
 import org.nodel.core.NodeAddress;
+import org.nodel.core.Nodel;
 import org.nodel.discovery.AdvertisementInfo.Addresses;
 import org.nodel.discovery.TopologyWatcher.ChangeHandler;
 import org.nodel.threading.TimerTask;
@@ -186,6 +187,9 @@ public class NodelAutoDNS extends AutoDNS {
      * (callback)
      */
     protected void handleTopologyChanged(List<InetAddress> appeared, List<InetAddress> disappeared) {
+        if (Nodel.getLocalInterfaceOnly())
+            return;
+
         synchronized (_discoveryLock) {
             for (InetAddress gone : disappeared)
                 _discoverers.remove(gone).shutdown();

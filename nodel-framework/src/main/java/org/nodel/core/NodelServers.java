@@ -174,10 +174,10 @@ public class NodelServers {
         // everything's attached, can now start
         loopbackChannelServer.start();        
         
-		// start up an channel server socket on all interfaces and any port.
+		// start up a channel server socket on the configured interface scope and any port.
 
         int requestedPort = Nodel.getMessagingPort();
-        _channelServerSocket = new ChannelServerSocket(requestedPort);
+        _channelServerSocket = new ChannelServerSocket(requestedPort, Nodel.getLocalInterfaceOnly());
         _channelServerSocket.attachChannelServerHandler(new Handler.H1<Socket>() {
             
             @Override

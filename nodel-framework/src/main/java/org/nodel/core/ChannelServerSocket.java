@@ -7,6 +7,8 @@ package org.nodel.core;
  */
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicLong;
@@ -46,6 +48,8 @@ public class ChannelServerSocket {
      * @see getRequestedPort
      */
     private int _requestedPort;
+
+    private boolean _localInterfaceOnly;
     
     /**
      * The requested port (0 means any)
@@ -103,7 +107,7 @@ public class ChannelServerSocket {
      * Can only be enabled once. 
      * (thread unsafe)
      */
-    private boolean _enabled = false;
+    private volatile boolean _enabled = false;
 
     /**
      * The server socket. 
@@ -124,7 +128,12 @@ public class ChannelServerSocket {
      * @throws IOException
      */
     public ChannelServerSocket(int port) {
+        this(port, false);
+    }
+
+    public ChannelServerSocket(int port, boolean localInterfaceOnly) {
         _requestedPort = port;
+        _localInterfaceOnly = localInterfaceOnly;
 
         // initialise the thread
         _thread = new Thread(new Runnable() {
@@ -160,7 +169,8 @@ public class ChannelServerSocket {
      * (thread entry-point)
      */
     private void run() {
-    	ensureServerSocket();
+		if (!ensureServerSocket())
+			return;
 
     	// fire the call-back
     	Handler.handle(_startedHandler, _port);
@@ -187,24 +197,56 @@ public class ChannelServerSocket {
     /**
 	 * Will keep trying until a server socket is established.
 	 */
-    private void ensureServerSocket() {
+	private boolean ensureServerSocket() {
 		while (_enabled) {
+			ServerSocket candidate = null;
 			try {
 				// initialise the socket
-				_serverSocket = new ServerSocket(_requestedPort);
-
-				_port = _serverSocket.getLocalPort();
+				if (_localInterfaceOnly) {
+					candidate = new ServerSocket();
+					candidate.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), _requestedPort));
+				} else {
+					candidate = new ServerSocket(_requestedPort);
+				}
+				synchronized (_signal) {
+					if (!_enabled) {
+						candidate.close();
+						return false;
+					}
+					_serverSocket = candidate;
+					candidate = null;
+					_port = _serverSocket.getLocalPort();
+				}
 
 				_logger.info("Bound to port '" + _port + "'");
 
-				return;
+				return true;
 			} catch (Exception exc) {
+				if (candidate != null) {
+					try {
+						candidate.close();
+					} catch (IOException ignored) {
+					}
+				}
 				_logger.warn("Could not establish a server socket; will retry in 15 seconds.", exc);
 				
-				Threads.sleep(15000);
+				Threads.safeWait(_signal, 15000);
 			}
 		}
+		return false;
 	} // (method)
+
+    InetAddress getBoundAddress() {
+        synchronized (_signal) {
+            return _serverSocket == null ? null : _serverSocket.getInetAddress();
+        }
+    }
+
+    boolean isShutdown() {
+        synchronized (_signal) {
+            return _thread == null && (_serverSocket == null || _serverSocket.isClosed());
+        }
+    }
 
 	/**
      * 
@@ -226,6 +268,7 @@ public class ChannelServerSocket {
      * (exception free)
      */
     public void shutdown() {
+        Thread thread;
         synchronized (_signal) {
             if (!_enabled)
                 return;
@@ -242,17 +285,21 @@ public class ChannelServerSocket {
             
             // notify the thread in case its sleeping
             _signal.notifyAll();
-            
-            // wait for the thread to fully complete
-            try {
-                _thread.join();
-            } catch (Exception exc) {
-                // (must consume)
-            }            
 
-            // mark the thread as 'shutdown'
-            _thread = null;
+            thread = _thread;
         } // (sync)
+
+        // wait outside the signal lock so an accepted connection can finish its handler
+        try {
+            thread.join();
+        } catch (Exception exc) {
+            // (must consume)
+        }
+
+        synchronized (_signal) {
+            if (_thread == thread)
+                _thread = null;
+        }
         
     } // (method)
 

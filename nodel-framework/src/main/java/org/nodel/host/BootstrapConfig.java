@@ -58,6 +58,18 @@ public class BootstrapConfig {
         this.nodelHostPort = value;
     }
 
+    @Value(name = "localInterfaceOnly", title = "Local interfaces only", order = 205, required = false,
+            desc = "Only expose HTTP, REST, and native messaging on loopback. (command-line arg '--localInterfaceOnly')")
+    private boolean localInterfaceOnly = false;
+
+    public boolean getLocalInterfaceOnly() {
+        return this.localInterfaceOnly;
+    }
+
+    public void setLocalInterfaceOnly(boolean value) {
+        this.localInterfaceOnly = value;
+    }
+
     public final static int DEFAULT_MESSAGING_PORT = 0;
 
     @Value(name = "messagingPort", title = "Messaging Port", order = 210, required = true, 
@@ -222,6 +234,9 @@ public class BootstrapConfig {
             
             if ("-p".equals(arg) || "--NodelHostPort".equalsIgnoreCase(arg)) {
                 this.nodelHostPort = Integer.parseInt(nextArg);
+
+            } else if ("--localInterfaceOnly".equalsIgnoreCase(arg)) {
+                this.localInterfaceOnly = true;
 
             } else if ("-r".equals(arg) || "--nodelRoot".equalsIgnoreCase(arg)) {
                 this.nodelRoot = nextArg;

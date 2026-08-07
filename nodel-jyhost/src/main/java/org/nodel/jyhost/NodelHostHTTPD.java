@@ -174,7 +174,11 @@ public class NodelHostHTTPD extends NanoHTTPD {
     };
 
     public NodelHostHTTPD(int port, File directory) throws IOException {
-        super(port, directory, false);
+        this(port, directory, false);
+    }
+
+    public NodelHostHTTPD(int port, File directory, boolean localInterfaceOnly) throws IOException {
+        super(port, directory, false, localInterfaceOnly);
 
         TopologyWatcher.shared().addOnChangeHandler(_topologyWatcherChangeHandler);
 
