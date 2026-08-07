@@ -224,3 +224,9 @@ round-trips in both directions:
 ```
 Useful overrides: `STOCK_NODEL_VERSION` (release tag), `SMOKE_JAVA` (GraalVM
 Community 25 executable), `JY_PORT`/`GR_PORT`.
+
+The non-required **Wire Compatibility** workflow runs this network-dependent
+check weekly and on manual dispatch. Once those runs establish reliable GitHub
+runner networking, the intended follow-up is targeted, non-required pull
+request runs for changes under `nodel-framework/`, `nodel-jyhost/`,
+`scripts/compat-smoke.sh`, or `scripts/smoke-lib.sh`.

@@ -1,0 +1,47 @@
+name: Wire Compatibility
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: Stock Jython wire compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup GraalVM CE 25.2.4 on JDK 25.0.4
+        uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: graalvm-community
+          version: '25.2'
+          java-version: '25.0.4'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build host jar
+        run: ./gradlew :nodel-jyhost:shadowJar
+
+      - name: Test stock Jython wire compatibility
+        run: SMOKE_JAVA="$JAVA_HOME/bin/java" STOCK_NODEL_VERSION=v2.2.1.542 ./scripts/compat-smoke.sh
+
+      - name: Upload host logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wire-compatibility-host-logs
+          path: |
+            build/compat-smoke/jython-host/output.log
+            build/compat-smoke/jython-host/error.log
+            build/compat-smoke/graal-host/output.log
+            build/compat-smoke/graal-host/error.log
+          retention-days: 7
