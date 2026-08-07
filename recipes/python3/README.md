@@ -1,8 +1,8 @@
 # Python 3 demo recipes (GraalPy host)
 
 Two small recipes demonstrating modern **Python 3** node scripts running on the
-GraalVM (GraalPy) host — f-strings, `dict.items()`, `print()` and keyword-only
-arguments; none of this parses under the legacy Jython 2.5 host.
+GraalVM (GraalPy) host. They use f-strings, which do not parse under the legacy
+Jython 2.5 host, alongside `dict.items()`, `print()` and keyword arguments.
 
 | Recipe | Shows |
 |---|---|
