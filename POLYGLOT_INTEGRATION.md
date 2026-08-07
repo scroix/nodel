@@ -297,7 +297,7 @@ Verified by `GraalPyJsonRoundTripTest`.
     toolchain (no `GRAALVM_HOME` needed), testing and wire-compat
     smoke instructions.
 *   [x] Recipe-authoring notes for Python 3 differences (see §6).
-*   [ ] Provide a "compatibility matrix" (feature / Jython / GraalPy).
+*   [x] Provide a [compatibility matrix](COMPATIBILITY.md) (feature / Jython / GraalPy).
 
 ---
 

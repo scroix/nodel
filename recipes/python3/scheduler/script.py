@@ -22,11 +22,12 @@ tick_count = 0
 def handle_tick():
     global tick_count
     tick_count += 1
-    print(f'tick #{tick_count} (every {timer.interval}s)')
-    local_event_Tick.emit({'count': tick_count, 'interval': timer.interval})
+    interval = timer.getInterval()
+    print(f'tick #{tick_count} (every {interval}s)')
+    local_event_Tick.emit({'count': tick_count, 'interval': interval})
 
 
-timer = Timer(handle_tick, DEFAULT_INTERVAL, first_delay_seconds=1, stopped=True)
+timer = Timer(handle_tick, DEFAULT_INTERVAL, firstDelayInSeconds=1, stopped=True)
 
 
 @local_action({'title': 'Start', 'group': 'Scheduler', 'order': 1})
@@ -47,7 +48,7 @@ def Stop(arg=None):
 def SetInterval(arg):
     seconds = float(arg)
     print(f'Interval changing to {seconds}s')
-    timer.set_interval(seconds)
+    timer.setInterval(seconds)
 
 
 @local_action({'title': 'Tick Now', 'group': 'Scheduler', 'order': 4})
@@ -57,5 +58,5 @@ def TickNow(arg=None):
 
 def main():
     interval = float(param_IntervalSeconds or DEFAULT_INTERVAL)
-    timer.set_interval(interval)
+    timer.setInterval(interval)
     print(f'Scheduler node started (interval: {interval}s, use Start/Stop actions)')

@@ -23,8 +23,9 @@
 > **Python 3** (`script.py`, GraalPy) or **JavaScript** (`script.js`, GraalJS), side by
 > side in the same host. It is developed alongside regular Nodel (2.2.x, the `dev`
 > branch) and remains fully wire-compatible with existing 2.2.x hosts. See
-> `POLYGLOT_INTEGRATION.md` for architecture and status, `recipes/python3/` for modern
-> Python recipes and `recipes/javascript/` for the JavaScript authoring guide.
+> the [Jython-to-GraalPy compatibility matrix](COMPATIBILITY.md) for recipe migration,
+> `POLYGLOT_INTEGRATION.md` for architecture and status, `recipes/python3/` for
+> modern Python recipes and `recipes/javascript/` for the JavaScript authoring guide.
 
 Nodel is an open source digital media control system for museums and galleries.
 
