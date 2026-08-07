@@ -63,7 +63,7 @@ public class ServerRunnable implements Runnable {
         try {
             boolean localHostOnly = httpd.getLocalHostOnly();
             if (localHostOnly) {
-                httpd.getMyServerSocket().bind(new InetSocketAddress(InetAddress.getByName("localhost"), httpd.getPort()));
+                httpd.getMyServerSocket().bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), httpd.getPort()));
             } else {
                 httpd.getMyServerSocket().bind(httpd.hostname != null ? new InetSocketAddress(httpd.hostname, httpd.getPort()) : new InetSocketAddress(httpd.getPort()));
             }

@@ -11,6 +11,10 @@ Wire compatibility does not make Python source compatible: 2.2.x and v3 hosts
 can bind to each other, but a recipe moved onto v3 must use Python 3 syntax and
 the runtime rules below.
 
+The pinned, per-recipe load audit of the official library is recorded in
+[`RECIPE_COMPATIBILITY.md`](RECIPE_COMPATIBILITY.md), including the reproducible
+sweep command, first-failure classifications, and recommended pilot set.
+
 | Surface | Stock Jython host (2.2.x) | GraalPy host (v3) | Code and test evidence |
 |---|---|---|---|
 | Language and syntax | Jython `2.5.4-rc1`, using Python 2.5 syntax: `print 'x'`, `iteritems()`, `/` integer division for integers, `except Exception, e`, and `unicode`/`basestring`. | GraalPy `25.2.4`, using Python 3 syntax: `print('x')`, f-strings (`%` formatting still works), `items()`, `//` for integer division, `except Exception as e`, and `str`. Python-2-only source must be ported. | [Stock dependency](https://github.com/museumsvictoria/nodel/blob/v2.2.1.542/nodel-jyhost/build.gradle#L75-L80); [v3 dependency](nodel-jyhost/build.gradle#L14-L14); [Python 3 examples](recipes/python3/README.md) |
