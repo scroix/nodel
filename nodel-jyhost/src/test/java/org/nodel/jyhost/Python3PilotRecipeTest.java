@@ -7,6 +7,7 @@ package org.nodel.jyhost;
  */
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -16,18 +17,25 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+
+import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -310,6 +318,323 @@ public class Python3PilotRecipeTest {
         }
     }
 
+    @Test
+    public void brightSignLoadsWithoutAnAddressAndPreservesItsBindings() throws Exception {
+        loadRecipe("brightSignPilot", "brightsign-brightscript");
+
+        assertEquals("true", eval("playerStatus_timer.isStopped() and nodeStatus_timer.isStopped()"));
+        assertEquals("", eval("fullAddress"));
+        assertEquals(Set.of(
+            "Power", "Wake", "Sleep", "Play", "Pause", "Volume", "Reboot", "Mute",
+            "MuteOn", "MuteOff", "GetStatus"),
+            reducedNames(node.getLocalActions().keySet()));
+        assertEquals(Set.of(
+            "Power", "DesiredPower", "Model", "Serial", "VideoMode", "Volume", "Mute",
+            "Playback", "DesiredPlayback", "DesiredMute", "LastContactDetect", "Status",
+            "LogLevel"),
+            reducedNames(node.getLocalEvents().keySet()));
+        assertEquals(Set.of("playerConfig"), reducedNames(node.getParameters().keySet()));
+        eval("local_event_LastContactDetect.emit(str(date_instant(date_now().getMillis() - 300000)))");
+        eval("_lastReceive = system_clock() - 60000");
+        eval("nodeStatusCheck()");
+        assertEquals("Missing for approx. 5 mins", eval("local_event_Status.getArg().get('message')"));
+    }
+
+    @Test
+    public void brightSignConfiguredAddressUsesAnHttpSimulator() throws Exception {
+        ConcurrentLinkedQueue<String> requests = new ConcurrentLinkedQueue<>();
+        AtomicBoolean sleeping = new AtomicBoolean(false);
+        AtomicBoolean playing = new AtomicBoolean(true);
+        AtomicBoolean muted = new AtomicBoolean(false);
+        AtomicBoolean validStatus = new AtomicBoolean(true);
+        AtomicBoolean redirectStatus = new AtomicBoolean(false);
+        AtomicBoolean oversizedStatus = new AtomicBoolean(false);
+        ConcurrentLinkedQueue<String> redirectRequests = new ConcurrentLinkedQueue<>();
+        HttpServer redirectTarget = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        redirectTarget.createContext("/", exchange -> {
+            redirectRequests.add(exchange.getRequestURI().toString());
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        HttpServer simulator = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        simulator.createContext("/", exchange -> {
+            String request = exchange.getRequestURI().toString();
+            requests.add(request);
+            if (request.equals("/status") && redirectStatus.get()) {
+                exchange.getResponseHeaders().set(
+                    "Location",
+                    "http://127.0.0.1:" + redirectTarget.getAddress().getPort() + "/redirected");
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+                return;
+            }
+            if (request.equals("/playback?sleep=true"))
+                sleeping.set(true);
+            else if (request.equals("/playback?sleep=false"))
+                sleeping.set(false);
+            else if (request.equals("/playback?playback=play"))
+                playing.set(true);
+            else if (request.equals("/playback?playback=pause"))
+                playing.set(false);
+            else if (request.equals("/mute?mute"))
+                muted.set(true);
+            else if (request.equals("/mute?unmute"))
+                muted.set(false);
+
+            String model = oversizedStatus.get() ? "M".repeat(5000) : "XT1144";
+            String volume = oversizedStatus.get() ? "V".repeat(5000) : "42";
+            String serial = oversizedStatus.get() ? "S".repeat(5000) : "SIM-001";
+            String videoMode = oversizedStatus.get() ? "D".repeat(5000) : "1920x1080x60p";
+            String body = request.equals("/status") && validStatus.get()
+                ? "{\"model\":\"" + model + "\",\"volume\":\"" + volume + "\","
+                    + "\"serialNumber\":\"" + serial + "\",\"videomode\":\"" + videoMode + "\","
+                    + "\"sleep\":\"" + sleeping.get() + "\","
+                    + "\"playing\":\"" + playing.get() + "\","
+                    + "\"muted\":\"" + muted.get() + "\"}"
+                : request.equals("/status") ? "{invalid" : "{}";
+            byte[] response = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            try (OutputStream responseBody = exchange.getResponseBody()) {
+                responseBody.write(response);
+            }
+        });
+        redirectTarget.start();
+        simulator.start();
+        try {
+            loadRecipe(
+                "brightSignConfiguredPilot",
+                "brightsign-brightscript",
+                "{\"paramValues\":{\"playerConfig\":{\"ipAddress\":\"127.0.0.1\","
+                    + "\"scriptPort\":\"" + simulator.getAddress().getPort() + "\","
+                    + "\"udpPort\":5000}}}");
+
+            assertEquals("true", eval("playerStatus_timer.isStarted() and nodeStatus_timer.isStarted()"));
+            eval("playerStatusGet()");
+            assertEventuallyEquals("XT1144", "local_event_Model.getArg()");
+            assertEventuallyEquals("SIM-001", "local_event_Serial.getArg()");
+            assertEventuallyEquals("42", "local_event_Volume.getArg()");
+
+            oversizedStatus.set(true);
+            eval("playerStatusGet()");
+            assertEquals("true", eval(
+                "all(len(str(event.getArg())) <= MAX_STATUS_FIELD_LENGTH + 40 for event in "
+                    + "[local_event_Model, local_event_Serial, local_event_VideoMode, local_event_Volume])"));
+            oversizedStatus.set(false);
+            eval("playerStatusGet()");
+            assertEventuallyEquals("XT1144", "local_event_Model.getArg()");
+
+            requests.clear();
+            node.getLocalActions().get(new SimpleName("Power")).call("Off");
+            assertEventuallyContains(requests, "/playback?sleep=true");
+            assertEventuallyEquals("Off", "local_event_Power.getArg()");
+
+            node.getLocalActions().get(new SimpleName("Volume")).call(Integer.valueOf(42));
+            assertEventuallyContains(requests, "/volume?42");
+
+            node.getLocalActions().get(new SimpleName("Mute")).call("On");
+            assertEventuallyContains(requests, "/mute?mute");
+            assertEventuallyEquals("On", "local_event_Mute.getArg()");
+
+            node.getLocalActions().get(new SimpleName("Pause")).call(null);
+            assertEventuallyContains(requests, "/playback?playback=pause");
+            assertEventuallyEquals("Paused", "local_event_Playback.getArg()");
+
+            sleeping.set(true);
+            requests.clear();
+            eval("local_event_DesiredPower.emit('On')");
+            eval("playerStatusGet()");
+            assertEventuallyContains(requests, "/playback?sleep=false");
+            assertEquals("On", eval("local_event_DesiredPower.getArg()"));
+            eval("playerStatusGet()");
+            assertEventuallyEquals("On", "local_event_Power.getArg()");
+
+            validStatus.set(false);
+            eval("playerStatusGet()");
+            assertEquals("XT1144", eval("local_event_Model.getArg()"));
+            validStatus.set(true);
+
+            redirectStatus.set(true);
+            redirectRequests.clear();
+            eval("playerStatusGet()");
+            Thread.sleep(250);
+            assertTrue(redirectRequests.isEmpty(), "Status redirect unexpectedly followed");
+            redirectStatus.set(false);
+        } finally {
+            simulator.stop(0);
+            redirectTarget.stop(0);
+        }
+    }
+
+    @Test
+    public void extronIn16xxLoadsWithoutAnAddressAndPreservesItsBindings() throws Exception {
+        loadRecipe("extronIn16xxPilot", "extron-in16xx-mk1");
+
+        assertEquals("true", eval("local_event_Connected.getTimestamp() is None"));
+        assertEquals("true", eval("timer.isStopped()"));
+        try (ServerSocket unexpectedConnection = new ServerSocket(
+                0, 1, InetAddress.getByName("127.0.0.1"))) {
+            unexpectedConnection.setSoTimeout(6500);
+            eval("tcp.setDest('127.0.0.1:" + unexpectedConnection.getLocalPort() + "')");
+            assertThrows(SocketTimeoutException.class, unexpectedConnection::accept);
+        }
+        assertEquals("true", eval("local_event_Timeout.getTimestamp() is None"));
+        assertEquals("false", eval("str(bool(param_EnableRawSend)).lower()"));
+        assertEquals(Set.of("ipAddress", "port", "EnableRawSend"),
+            reducedNames(node.getParameters().keySet()));
+
+        eval("handleInputRespAndEmit('99', local_event_Input)");
+        assertEquals("Unexpected input value 99", eval("local_event_GeneralError.getArg()"));
+        assertEquals("true", eval("local_event_Input.getArg() is None"));
+        eval("received('X' * 5000)");
+        assertEquals("true", eval(
+            "len(str(local_event_Received.getArg())) <= MAX_RECEIVED_EVENT_LENGTH + 40"));
+
+        Set<String> expectedActions = new HashSet<>(Set.of(
+            "RefreshVideoInput", "RefreshAudioInput", "RefreshInput", "SetProgramVolume", "Send"));
+        Set<String> expectedEvents = new HashSet<>(Set.of(
+            "Greeting", "GreetingFirmwareDate", "GeneralError", "VideoInput", "AudioInput", "Input",
+            "ProgramVolume", "Connected", "Received", "Sent", "Disconnected", "Timeout"));
+        for (int input = 1; input <= 8; input++) {
+            expectedActions.add("Input" + input + "videoandaudioselect");
+            expectedActions.add("Input" + input + "videoonlyselect");
+            expectedActions.add("Input" + input + "audioonlyselect");
+            expectedEvents.add("Input" + input + "videoandaudioselect");
+            expectedEvents.add("Input" + input + "videoonlyselect");
+            expectedEvents.add("Input" + input + "audioonlyselect");
+        }
+        assertEquals(expectedActions, reducedNames(node.getLocalActions().keySet()));
+        assertEquals(expectedEvents, reducedNames(node.getLocalEvents().keySet()));
+    }
+
+    @Test
+    public void extronIn16xxConfiguredAddressUsesATcpSimulator() throws Exception {
+        try (ServerSocket simulator = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
+            simulator.setSoTimeout(20000);
+            FutureTask<Socket> accept = new FutureTask<>(simulator::accept);
+            Thread acceptThread = new Thread(accept, "extron-in16xx-simulator");
+            acceptThread.setDaemon(true);
+            acceptThread.start();
+
+            loadRecipe(
+                "extronIn16xxConfiguredPilot",
+                "extron-in16xx-mk1",
+                "{\"paramValues\":{\"ipAddress\":\"127.0.0.1\",\"port\":"
+                    + simulator.getLocalPort() + "}}");
+
+            try (Socket connection = accept.get(20, TimeUnit.SECONDS)) {
+                serveExtronIn16xxStartup(
+                    connection,
+                    "G".repeat(5000),
+                    "F".repeat(5000),
+                    new String[] {"01", "02", "99" + "X".repeat(5000)});
+                InputStream input = connection.getInputStream();
+                OutputStream output = connection.getOutputStream();
+
+                assertEventuallyEquals("true",
+                    "local_event_Greeting.getTimestamp() is not None");
+                assertEventuallyEquals("true",
+                    "str(local_event_Greeting.getArg()).endswith('characters truncated]')");
+                assertEventuallyEquals("true",
+                    "local_event_GreetingFirmwareDate.getTimestamp() is not None");
+                assertEventuallyEquals("true",
+                    "str(local_event_GreetingFirmwareDate.getArg()).endswith('characters truncated]')");
+                assertEventuallyEquals("Input 1", "local_event_VideoInput.getArg()");
+                assertEventuallyEquals("Input 2", "local_event_AudioInput.getArg()");
+                assertEventuallyEquals("true", "local_event_Input.getArg() is None");
+                assertEventuallyEquals("true",
+                    "local_event_GeneralError.getTimestamp() is not None");
+                assertEventuallyEquals("true",
+                    "str(local_event_GeneralError.getArg()).endswith('characters truncated]')");
+                assertEventuallyEquals("true", "timer.isStarted()");
+                eval("timer.stop()");
+
+                connection.setSoTimeout(250);
+                node.getLocalActions().get(new SimpleName("Send")).call("I");
+                assertThrows(SocketTimeoutException.class, () -> readCrLfCommand(input));
+                connection.setSoTimeout(10000);
+                eval("param_EnableRawSend = True");
+
+                node.getLocalActions()
+                    .get(new SimpleName("Input 4 video and audio select"))
+                    .call(null);
+                assertEquals("4!", readCrLfCommand(input));
+                eval("local_action_RefreshVideoInput()");
+                connection.setSoTimeout(250);
+                assertThrows(SocketTimeoutException.class, () -> readCrLfCommand(input));
+                output.write("In4 All\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                connection.setSoTimeout(10000);
+                assertEventuallyEquals("true",
+                    "lookup_local_event('Input 4 video and audio select').getTimestamp() is not None");
+                assertEquals("&", readCrLfCommand(input));
+                output.write("04\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+
+                node.getLocalActions().get(new SimpleName("Set Program Volume")).call(-125);
+                assertEquals("\u001bD1*-125GRPM", readCrLfCommand(input));
+                output.write("GrpmD1*-125\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+
+                node.getLocalActions().get(new SimpleName("Send")).call("I");
+                assertEquals("I", readCrLfCommand(input));
+                eval("local_action_RefreshAudioInput()");
+                connection.setSoTimeout(250);
+                assertThrows(SocketTimeoutException.class, () -> readCrLfCommand(input));
+                output.write("I\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                connection.setSoTimeout(10000);
+                assertEquals("$", readCrLfCommand(input));
+                output.write("05\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                connection.setSoTimeout(250);
+                node.getLocalActions().get(new SimpleName("Send")).call("1!\r\n2!");
+                assertThrows(SocketTimeoutException.class, () -> readCrLfCommand(input));
+                connection.setSoTimeout(10000);
+
+                eval("local_action_RefreshInput()");
+                assertEquals("!", readCrLfCommand(input));
+            }
+
+            assertEventuallyEquals("true", "comms_connected is False");
+            eval("local_action_RefreshVideoInput()");
+            assertEquals("0", eval("str(tcp.getQueueLength())"));
+
+            try (Socket reconnected = simulator.accept()) {
+                serveExtronIn16xxStartup(
+                    reconnected, "IN1608-2", "2026-08-09-b", new String[] {"04", "05", "06"});
+                assertEventuallyEquals("IN1608-2", "local_event_Greeting.getArg()");
+                assertEventuallyEquals("2026-08-09-b", "local_event_GreetingFirmwareDate.getArg()");
+                assertEventuallyEquals("Input 4", "local_event_VideoInput.getArg()");
+                assertEventuallyEquals("Input 5", "local_event_AudioInput.getArg()");
+                assertEventuallyEquals("Input 6", "local_event_Input.getArg()");
+
+                eval("tcp.setRequestTimeout(1000)");
+                eval("local_action_RefreshInput()");
+                assertEquals("!", readCrLfCommand(reconnected.getInputStream()));
+                Thread.sleep(1200);
+                eval("local_action_RefreshVideoInput()");
+                assertEventuallyEquals("true", "local_event_Timeout.getTimestamp() is not None");
+                assertEventuallyEquals("0", "str(tcp.getQueueLength())");
+                assertEventuallyEquals("true", "timer.isStopped()");
+            }
+
+            try (Socket reconnectedAfterTimeout = simulator.accept()) {
+                serveExtronIn16xxStartup(
+                    reconnectedAfterTimeout,
+                    "IN1608-3",
+                    "2026-08-09-c",
+                    new String[] {"07", "08", "01"});
+                assertEventuallyEquals("IN1608-3", "local_event_Greeting.getArg()");
+                assertEventuallyEquals("2026-08-09-c", "local_event_GreetingFirmwareDate.getArg()");
+                assertEventuallyEquals("Input 7", "local_event_VideoInput.getArg()");
+                assertEventuallyEquals("Input 8", "local_event_AudioInput.getArg()");
+                assertEventuallyEquals("Input 1", "local_event_Input.getArg()");
+            }
+        }
+        assertEventuallyEquals("true", "timer.isStopped()");
+    }
+
     private void loadRecipe(String nodeName, String recipeName) throws IOException {
         loadRecipe(nodeName, recipeName, null);
     }
@@ -392,6 +717,59 @@ public class Python3PilotRecipeTest {
                 throw new IOException("Extron simulator received an oversized command");
             command.write(value);
         }
+    }
+
+    private static String readCrLfCommand(InputStream input) throws IOException {
+        ByteArrayOutputStream command = new ByteArrayOutputStream();
+        for (;;) {
+            int value = input.read();
+            if (value < 0)
+                throw new IOException("Simulator connection closed before a command arrived");
+            if (value == '\n')
+                return command.toString(StandardCharsets.US_ASCII);
+            if (value != '\r')
+                command.write(value);
+            if (command.size() >= 256)
+                throw new IOException("Simulator received an oversized command");
+        }
+    }
+
+    private static void serveExtronIn16xxStartup(
+            Socket connection,
+            String greeting,
+            String firmwareDate,
+            String[] inputResponses) throws IOException {
+        connection.setSoTimeout(10000);
+        InputStream input = connection.getInputStream();
+        OutputStream output = connection.getOutputStream();
+        output.write((greeting + "\r\n" + firmwareDate + "\r\n")
+            .getBytes(StandardCharsets.US_ASCII));
+        output.flush();
+
+        for (int request = 0; request < 3; request++) {
+            String command = readCrLfCommand(input);
+            String response = switch (command) {
+                case "&" -> inputResponses[0];
+                case "$" -> inputResponses[1];
+                case "!" -> inputResponses[2];
+                default -> throw new IOException(
+                    "Unexpected Extron IN16XX simulator command: " + command);
+            };
+            output.write((response + "\r\n").getBytes(StandardCharsets.US_ASCII));
+            output.flush();
+        }
+    }
+
+    private static void assertEventuallyContains(Collection<String> values, String expected)
+            throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        do {
+            if (values.contains(expected))
+                return;
+            Thread.sleep(25);
+        } while (System.nanoTime() < deadline);
+
+        assertTrue(values.contains(expected), "Missing " + expected + " in " + values);
     }
 
     private static String simulatedExtronResponse(String command) throws IOException {
