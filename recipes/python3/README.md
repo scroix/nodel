@@ -21,6 +21,8 @@ Pilot sources are audited against museumsvictoria/nodel-recipes commit
 | [`extron-in16xx-mk1/`](extron-in16xx-mk1/script.py) | Python 3 long-integer cleanup, guarded managed `TCP()`, dynamic input bindings, corrected SIS input queries, bounded diagnostics, queue-safe reconnects, and an opt-in raw Send action |
 | [`osc-client/`](osc-client/script.py) | contained Python 3 OSC encoding, parameter-defined actions, bounded message strings, and managed UDP without runtime dependency downloads |
 | [`alcorn-8traxx/`](alcorn-8traxx/script.py) | ForeignNone-safe logging, lazily configured managed `TCP()`, restart-safe binding changes, queued 8 TraXX acknowledgements, bounded responses, and connection-aware status |
+| [`sony-visca-color-video-camera/`](sony-visca-color-video-camera/script.py) | byte-safe VISCA-over-IP framing, sequenced delivery/retry handling, managed UDP readiness, binding-driven configuration, guarded PTZ/preset actions, and bounded HTTP token status checks |
+| [`yamaha-av-receiver-ynca/`](yamaha-av-receiver-ynca/script.py) | Python 3 UPnP URL parsing, lazily configured managed `TCP()`, protocol-paced commands, stopped-until-connected pollers, dynamic zone/input bindings, bounded responses, and connection-aware status |
 
 These alpha examples assume a trusted management network: Nodel's management
 APIs are unauthenticated, and configured devices are trusted peers. The shared
