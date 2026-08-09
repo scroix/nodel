@@ -8,6 +8,8 @@ repository remains a read-only source for compatibility work.
 The small demos use Python-3-only syntax directly. Pilot ports preserve the
 official recipe's bindings and protocol behaviour while making device I/O
 opt-in where practical, so merely loading an example does not contact a LAN.
+Pilot sources are audited against museumsvictoria/nodel-recipes commit
+`42cec03bdd0e43fc9252fe3dd6f6900f355f21a3`.
 
 | Recipe | Shows |
 |---|---|
@@ -15,6 +17,14 @@ opt-in where practical, so merely loading an example does not contact a LAN.
 | [`scheduler/`](scheduler/script.py) | parameters, local actions/events, managed `Timer()` emitting periodic structured events |
 | [`amx-beacon-receiver/`](amx-beacon-receiver/script.py) | opt-in managed multicast `UDP()`, bounded dynamic discovery events, and AMXB packet parsing; disabling the receiver clears its 128-device registry |
 | [`extron-mvc-121-plus/`](extron-mvc-121-plus/script.py) | guarded managed `TCP()`, stopped-until-configured pollers, mixer actions/events, and response parsing |
+| [`brightsign-brightscript/`](brightsign-brightscript/script.py) | Python 3 HTTP control and bounded state reconciliation for the Brightsign plugin, with polling stopped until an address is configured and cross-host redirects disabled |
+| [`extron-in16xx-mk1/`](extron-in16xx-mk1/script.py) | Python 3 long-integer cleanup, guarded managed `TCP()`, dynamic input bindings, corrected SIS input queries, bounded diagnostics, queue-safe reconnects, and an opt-in raw Send action |
+
+These alpha examples assume a trusted management network: Nodel's management
+APIs are unauthenticated, and configured devices are trusted peers. The shared
+`get_url` helper limits response size and idle read time but does not impose a
+total response deadline. Simulator tests therefore cover compatibility and
+protocol behaviour, not hostile networks or physical-device validation.
 
 ## Trying them
 
