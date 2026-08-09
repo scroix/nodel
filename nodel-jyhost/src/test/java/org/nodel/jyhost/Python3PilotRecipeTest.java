@@ -7,6 +7,7 @@ package org.nodel.jyhost;
  */
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -890,6 +891,441 @@ public class Python3PilotRecipeTest {
         }
     }
 
+    @Test
+    public void sonyViscaLoadsWithoutAnAddressAndUsesBindingDrivenUdp() throws Exception {
+        try (DatagramSocket simulator = new DatagramSocket(
+                new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))) {
+            simulator.setSoTimeout(10000);
+            loadRecipe("sonyViscaPilot", "sony-visca-color-video-camera");
+
+            assertEquals(Set.of("disabled", "ipAddress", "port", "viscaAddress", "StatusHTTP"),
+                reducedNames(node.getParameters().keySet()));
+            assertEquals(Set.of("IPAddress"), reducedNames(node.getRemoteEvents().keySet()));
+            assertEquals(Set.of(
+                "IPAddress", "PanSpeed", "TiltSpeed", "FocusMode", "Status",
+                "LastContactDetect", "LogLevel"),
+                reducedNames(node.getLocalEvents().keySet()));
+            assertEquals(Set.of(
+                "PanSpeed", "TiltSpeed", "ptzhome", "ptzup", "ptzdown", "ptzleft",
+                "ptzright", "ptzstop", "ptzpresetreset", "ptzpresetset",
+                "ptzpresetrecall", "ptzzoomstop", "ptzzoomtele", "ptzzoomwide",
+                "ptzfocusmodeauto", "ptzfocusmodemanual", "ptzfocusstop",
+                "ptzfocusfar", "ptzfocusnear", "httpPoll"),
+                reducedNames(node.getLocalActions().keySet()));
+            assertEquals("5", eval("str(local_event_PanSpeed.getArg())"));
+            assertEquals("5", eval("str(local_event_TiltSpeed.getArg())"));
+            assertEquals("false", eval("_destinationConfigured"));
+            assertEquals("2", eval("str(local_event_Status.getArg().get('level'))"));
+            assertEquals("false", eval("configureDestination('camera.invalid')"));
+            assertEquals("Invalid address",
+                eval("local_event_Status.getArg().get('message')"));
+            assertEventuallyEquals("true", "_udpReady", 10);
+
+            eval("_port = " + simulator.getLocalPort());
+            eval("remote_event_IPAddress('127.0.0.1')");
+            DatagramPacket reset = receiveDatagramPacket(simulator);
+            assertEquals("020000010000000001", HexFormat.of().formatHex(
+                Arrays.copyOf(reset.getData(), reset.getLength())));
+            assertEventuallyEquals("false", "_pendingCommand['awaitingSend']");
+            assertEquals("127.0.0.1:" + simulator.getLocalPort(),
+                eval("_pendingCommand['target']"));
+            byte[] resetReply = HexFormat.of().parseHex("020100010000000001");
+            simulator.send(new DatagramPacket(
+                resetReply, resetReply.length, reset.getSocketAddress()));
+            assertEventuallyEquals("true", "_pendingCommand is None");
+
+            node.getLocalActions().get(new SimpleName("ptz_up")).call(null);
+            assertEquals("01000009000000018101060105050301ff",
+                HexFormat.of().formatHex(receiveDatagram(simulator)));
+            node.getLocalActions().get(new SimpleName("PanSpeed")).call(Integer.valueOf(24));
+            node.getLocalActions().get(new SimpleName("TiltSpeed")).call(Integer.valueOf(20));
+            node.getLocalActions().get(new SimpleName("ptz_right")).call(null);
+            simulator.setSoTimeout(250);
+            assertThrows(SocketTimeoutException.class, () -> receiveDatagram(simulator));
+            byte[] acknowledgement = HexFormat.of().parseHex("01110003000000019041ff");
+            simulator.send(new DatagramPacket(
+                acknowledgement, acknowledgement.length, reset.getSocketAddress()));
+            assertEventuallyEquals("Awaiting completion",
+                "local_event_Status.getArg().get('message')");
+            assertThrows(SocketTimeoutException.class, () -> receiveDatagram(simulator));
+            byte[] completion = HexFormat.of().parseHex("01110003000000019051ff");
+            simulator.send(new DatagramPacket(
+                completion, completion.length, reset.getSocketAddress()));
+            simulator.setSoTimeout(10000);
+            assertEquals("01000009000000028101060118140203ff",
+                HexFormat.of().formatHex(receiveDatagram(simulator)));
+            completion = HexFormat.of().parseHex("01110003000000029051ff");
+            simulator.send(new DatagramPacket(
+                completion, completion.length, reset.getSocketAddress()));
+            assertEventuallyEquals("true", "_pendingCommand is None");
+
+            eval("RESPONSE_TIMEOUT_SECONDS = 0.1");
+            node.getLocalActions().get(new SimpleName("ptz_preset_recall"))
+                .call(Integer.valueOf(7));
+            String presetPacket = HexFormat.of().formatHex(receiveDatagram(simulator));
+            assertEquals("01000007000000038101043f0207ff", presetPacket);
+            assertEquals(presetPacket, HexFormat.of().formatHex(receiveDatagram(simulator)));
+
+            byte[] reply = HexFormat.of().parseHex("01110003000000039051ff");
+            simulator.send(new DatagramPacket(reply, reply.length, reset.getSocketAddress()));
+            assertEventuallyEquals("0", "str(local_event_Status.getArg().get('level'))");
+            assertEventuallyEquals("true", "_lastReceive > 0");
+
+            eval("RESPONSE_TIMEOUT_SECONDS = 1");
+            node.getLocalActions().get(new SimpleName("ptz_home")).call(null);
+            assertEquals("010000050000000481010604ff",
+                HexFormat.of().formatHex(receiveDatagram(simulator)));
+            node.getLocalActions().get(new SimpleName("ptz_stop")).call(null);
+            assertEquals("01000009000000058101060105050303ff",
+                HexFormat.of().formatHex(receiveDatagram(simulator)));
+            completion = HexFormat.of().parseHex("01110003000000059051ff");
+            simulator.send(new DatagramPacket(
+                completion, completion.length, reset.getSocketAddress()));
+            assertEventuallyEquals("true", "_pendingCommand is None");
+
+            simulator.setSoTimeout(250);
+            node.getLocalActions().get(new SimpleName("PanSpeed")).call(Integer.valueOf(0));
+            node.getLocalActions().get(new SimpleName("ptz_preset_recall"))
+                .call(Integer.valueOf(256));
+            assertThrows(SocketTimeoutException.class, () -> receiveDatagram(simulator));
+
+            eval("remote_event_IPAddress(None)");
+            assertEquals("false", eval("_destinationConfigured"));
+            assertEquals("true", eval("timer_poller.isStopped()"));
+            assertEquals("true", eval("timer_statusCheck.isStopped()"));
+            assertEquals("2", eval("str(local_event_Status.getArg().get('level'))"));
+            String receiveCountBeforeLateReply = eval("str(_udpReceiveCount)");
+            simulator.send(new DatagramPacket(reply, reply.length, reset.getSocketAddress()));
+            assertEventuallyEquals("true",
+                "_udpReceiveCount > " + receiveCountBeforeLateReply);
+            assertEquals("2", eval("str(local_event_Status.getArg().get('level'))"));
+
+            String failedUdpIdentity = eval("str(id(udp))");
+            eval("udp.close(); SEND_CONFIRMATION_TIMEOUT_SECONDS = 0.1; "
+                + "configureDestination('127.0.0.1')");
+            simulator.setSoTimeout(10000);
+            DatagramPacket recoveredReset = receiveDatagramPacket(simulator);
+            assertEquals("02000001", HexFormat.of().formatHex(
+                Arrays.copyOf(recoveredReset.getData(), 4)));
+            assertNotEquals(failedUdpIdentity, eval("str(id(udp))"));
+            assertEventuallyEquals("true", "_udpReady");
+            byte[] recoveredResetReply = Arrays.copyOf(
+                recoveredReset.getData(), recoveredReset.getLength());
+            recoveredResetReply[1] = 0x01;
+            simulator.send(new DatagramPacket(
+                recoveredResetReply,
+                recoveredResetReply.length,
+                recoveredReset.getSocketAddress()));
+            assertEventuallyEquals("true", "_pendingCommand is None");
+        }
+    }
+
+    @Test
+    public void sonyViscaConfiguredAddressUsesHttpAndUdpStatusSimulators() throws Exception {
+        AtomicBoolean httpRequested = new AtomicBoolean(false);
+        HttpServer httpServer = HttpServer.create(
+            new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
+        httpServer.createContext("/login", exchange -> {
+            httpRequested.set(true);
+            byte[] response = "camera-ready-token".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            try (OutputStream body = exchange.getResponseBody()) {
+                body.write(response);
+            }
+        });
+        httpServer.start();
+
+        try (DatagramSocket simulator = new DatagramSocket(
+                new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))) {
+            simulator.setSoTimeout(10000);
+            loadRecipe(
+                "sonyViscaConfiguredPilot",
+                "sony-visca-color-video-camera",
+                "{\"paramValues\":{\"ipAddress\":\"127.0.0.1\",\"port\":"
+                    + simulator.getLocalPort()
+                    + ",\"StatusHTTP\":{\"url\":\"http://127.0.0.1:"
+                    + httpServer.getAddress().getPort()
+                    + "/login\",\"token\":\"camera-ready-token\"}}}");
+
+            DatagramPacket reset = receiveDatagramPacket(simulator);
+            assertEquals("020000010000000001", HexFormat.of().formatHex(
+                Arrays.copyOf(reset.getData(), reset.getLength())));
+            byte[] resetReply = HexFormat.of().parseHex("020100010000000001");
+            simulator.send(new DatagramPacket(
+                resetReply, resetReply.length, reset.getSocketAddress()));
+            assertEventuallyEquals("true", "_pendingCommand is None");
+            eval("timer_poller.stop(); timer_statusCheck.stop(); _lastReceive = 0");
+            node.getLocalActions().get(new SimpleName("httpPoll")).call(null);
+            assertEventuallyEquals("true", "_lastReceive > 0");
+            assertTrue(httpRequested.get());
+            assertEquals("0", eval("str(local_event_Status.getArg().get('level'))"));
+        } finally {
+            httpServer.stop(0);
+        }
+    }
+
+    @Test
+    public void sonyViscaDisabledIgnoresBindingUpdates() throws Exception {
+        try (DatagramSocket simulator = new DatagramSocket(
+                new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))) {
+            simulator.setSoTimeout(250);
+            loadRecipe(
+                "sonyViscaDisabledPilot",
+                "sony-visca-color-video-camera",
+                "{\"paramValues\":{\"disabled\":true,\"port\":"
+                    + simulator.getLocalPort() + "}}");
+
+            assertEquals("false", eval("_udpReady"));
+            assertEquals("false", eval("_destinationConfigured"));
+            assertEquals("Disabled", eval("local_event_Status.getArg().get('message')"));
+            eval("remote_event_IPAddress('127.0.0.1')");
+            assertEquals("false", eval("_destinationConfigured"));
+            assertEquals("true", eval("timer_poller.isStopped()"));
+            assertEquals("true", eval("timer_statusCheck.isStopped()"));
+            assertEquals("Disabled", eval("local_event_Status.getArg().get('message')"));
+            assertThrows(SocketTimeoutException.class, () -> receiveDatagram(simulator));
+        }
+    }
+
+    @Test
+    public void yamahaYncaLoadsWithoutAnAddressAndPreservesDynamicBindings() throws Exception {
+        loadRecipe("yamahaYncaPilot", "yamaha-av-receiver-ynca");
+
+        assertEquals(Set.of("Disabled", "IPAddress"),
+            reducedNames(node.getParameters().keySet()));
+        assertEquals(Set.of("UPnPBeacon"), reducedNames(node.getRemoteEvents().keySet()));
+        assertEquals("true", eval("tcp is None"));
+        assertEquals("true", eval("all(poller.isStopped() for poller in pollers)"));
+        assertEquals("true", eval("status_timer.isStopped()"));
+        assertEquals("2", eval("str(local_event_Status.getArg().get('level'))"));
+        assertEquals(59, node.getLocalActions().size());
+        assertEquals(54, node.getLocalEvents().size());
+        assertTrue(node.getLocalActions().containsKey(new SimpleName("Get Version")));
+        assertTrue(node.getLocalActions().containsKey(new SimpleName("Main Power")));
+        assertTrue(node.getLocalActions().containsKey(new SimpleName("Zone 2 Input HDMI5")));
+        assertTrue(node.getLocalEvents().containsKey(new SimpleName("Main Input HDMI2")));
+        assertTrue(node.getLocalEvents().containsKey(new SimpleName("Zone 2 Muting")));
+
+        eval("local_event_DiscoveredIPAddress.emit('127.0.0.1'); setupTCP()");
+        assertEquals("true", eval("tcp is None"));
+        eval("param_IPAddress = 'not a valid host'; setupTCP()");
+        assertEquals("true", eval("tcp is None"));
+        assertEquals("Invalid address", eval("local_event_Status.getArg().get('message')"));
+    }
+
+    @Test
+    public void yamahaYncaUsesATcpSimulatorForCommandsResponsesAndStatus() throws Exception {
+        try (ServerSocket simulator = new ServerSocket(
+                0, 1, InetAddress.getByName("127.0.0.1"))) {
+            simulator.setSoTimeout(20000);
+            loadRecipe("yamahaYncaConfiguredPilot", "yamaha-av-receiver-ynca");
+            eval("YNCA_TCPPORT = " + simulator.getLocalPort()
+                + "; param_IPAddress = '127.0.0.1'; setupTCP()");
+
+            try (Socket connection = simulator.accept()) {
+                connection.setSoTimeout(10000);
+                InputStream input = connection.getInputStream();
+                OutputStream output = connection.getOutputStream();
+                assertEventuallyEquals("true", "_commsConnected");
+                eval("stopPollers()");
+
+                node.getLocalActions().get(new SimpleName("Get Main Power")).call(null);
+                node.getLocalActions().get(new SimpleName("Get Zone 2 Power")).call(null);
+                assertEquals("@MAIN:PWR=?", readCrLfCommand(input));
+                long firstCommandReceivedAt = System.nanoTime();
+                output.write("@MAIN:PWR=On\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEquals("@ZONE2:PWR=?", readCrLfCommand(input));
+                long commandSpacingMillis = TimeUnit.NANOSECONDS.toMillis(
+                    System.nanoTime() - firstCommandReceivedAt);
+                assertTrue(commandSpacingMillis >= 95,
+                    "YNCA commands were only " + commandSpacingMillis + " ms apart");
+                output.write("@ZONE2:PWR=Standby\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+
+                node.getLocalActions().get(new SimpleName("Main Power")).call("Off");
+                assertEquals("@MAIN:PWR=Standby", readCrLfCommand(input));
+                output.write("@MAIN:PWR=Standby\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("Off", "lookup_local_event('Main Power').getArg()");
+
+                node.getLocalActions().get(new SimpleName("Main Muting Toggle")).call(null);
+                assertEquals("@MAIN:MUTE=?", readCrLfCommand(input));
+                long mutingQueryReceivedAt = System.nanoTime();
+                output.write("@MAIN:MUTE=Off\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEquals("@MAIN:MUTE=On", readCrLfCommand(input));
+                long mutingCommandSpacingMillis = TimeUnit.NANOSECONDS.toMillis(
+                    System.nanoTime() - mutingQueryReceivedAt);
+                assertTrue(mutingCommandSpacingMillis >= 95,
+                    "YNCA mute query and set were only "
+                        + mutingCommandSpacingMillis + " ms apart");
+                output.write("@MAIN:MUTE=On\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("On", "lookup_local_event('Main Muting').getArg()");
+
+                node.getLocalActions().get(new SimpleName("Main Volume"))
+                    .call(Double.valueOf(-20.5));
+                assertEquals("@MAIN:VOL=-20.5", readCrLfCommand(input));
+                output.write("@MAIN:VOL=-20.5\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("-20.5", "str(lookup_local_event('Main Volume').getArg())");
+
+                node.getLocalActions().get(new SimpleName("Main Input HDMI2")).call(null);
+                assertEquals("@MAIN:INP=HDMI2", readCrLfCommand(input));
+                output.write("@MAIN:INP=HDMI2\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true", "lookup_local_event('Main Input HDMI2').getArg()");
+                assertEventuallyEquals("false", "lookup_local_event('Main Input HDMI1').getArg()");
+
+                node.getLocalActions().get(new SimpleName("Get Version")).call(null);
+                assertEquals("@SYS:VERSION=?", readCrLfCommand(input));
+                output.write(("@SYS:VERSION=" + "V".repeat(1000) + "\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true",
+                    "len(str(lookup_local_event('Version').getArg())) < 1000 "
+                        + "and 'characters truncated]' in str(lookup_local_event('Version').getArg())");
+
+                eval("lastReceive[0] = 0");
+                output.write("@RESTRICTED\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true", "lastReceive[0] > 0");
+                assertEventuallyEquals("Restricted",
+                    "local_event_Status.getArg().get('message')");
+
+                connection.setSoTimeout(250);
+                node.getLocalActions().get(new SimpleName("Main Input")).call("INVALID");
+                node.getLocalActions().get(new SimpleName("Main Power")).call("Maybe");
+                assertThrows(SocketTimeoutException.class, () -> readCrLfCommand(input));
+                connection.setSoTimeout(10000);
+
+                eval("lastReceive[0] = system_clock() - (6 * 60 * 1000); "
+                    + "local_event_LastContactDetect.emit(str(date_now().minusMinutes(5))); "
+                    + "statusCheck()");
+                assertEquals("true", eval(
+                    "(lambda message: message.startswith('Missing for approx. ') "
+                        + "and message.endswith(' mins') and message[20:-5].isdigit())"
+                        + "(str(local_event_Status.getArg().get('message')))"));
+                eval("lastReceive[0] = system_clock(); stopComms('Test stop'); "
+                    + "tcp_received(_connectionGeneration, '@MAIN:PWR=On')");
+                assertEquals("Test stop", eval("local_event_Status.getArg().get('message')"));
+            }
+
+            try (Socket reconnected = simulator.accept()) {
+                assertEventuallyEquals("true", "_commsConnected");
+                assertEventuallyEquals("0", "str(lastReceive[0])");
+                assertEventuallyEquals("Awaiting response",
+                    "local_event_Status.getArg().get('message')");
+                eval("staleCycle = _connectionCycle; _connectionCycle += 1; "
+                    + "handleTCPDisconnected(_connectionGeneration, staleCycle); "
+                    + "handleTCPTimeout(_connectionGeneration, staleCycle)");
+                assertEquals("true", eval("_commsConnected"));
+                assertEquals("Awaiting response",
+                    eval("local_event_Status.getArg().get('message')"));
+                eval("stopPollers()");
+                reconnected.setSoTimeout(10000);
+                InputStream input = reconnected.getInputStream();
+                OutputStream output = reconnected.getOutputStream();
+                node.getLocalActions().get(new SimpleName("Main Muting Toggle")).call(null);
+                assertEquals("@MAIN:MUTE=?", readCrLfCommand(input));
+                node.getLocalActions().get(new SimpleName("Main Muting")).call("Off");
+                output.write("@MAIN:MUTE=Off\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEquals("@MAIN:MUTE=Off", readCrLfCommand(input));
+                String receiveCountBeforeExplicitMute = eval("str(_tcpReceiveCount)");
+                output.write("@MAIN:MUTE=Off\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true",
+                    "_tcpReceiveCount > " + receiveCountBeforeExplicitMute);
+                assertEventuallyEquals("Off", "lookup_local_event('Main Muting').getArg()");
+
+                eval("[handler() for handler in connectionResetHandlers]");
+                node.getLocalActions().get(new SimpleName("Main Muting Toggle")).call(null);
+                assertEquals("@MAIN:MUTE=?", readCrLfCommand(input));
+                output.write("@RESTRICTED\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("Restricted",
+                    "local_event_Status.getArg().get('message')");
+                String receiveCountBeforeUnsolicitedMute = eval("str(_tcpReceiveCount)");
+                output.write("@MAIN:MUTE=Off\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true",
+                    "_tcpReceiveCount > " + receiveCountBeforeUnsolicitedMute);
+                assertEventuallyEquals("Off", "lookup_local_event('Main Muting').getArg()");
+                reconnected.setSoTimeout(250);
+                assertThrows(SocketTimeoutException.class, () -> readCrLfCommand(input));
+
+                eval("[handler() for handler in connectionResetHandlers]; "
+                    + "MUTING_TOGGLE_TIMEOUT_SECONDS = 0.1");
+                reconnected.setSoTimeout(10000);
+                node.getLocalActions().get(new SimpleName("Main Muting Toggle")).call(null);
+                assertEquals("@MAIN:MUTE=?", readCrLfCommand(input));
+                Thread.sleep(250);
+                String receiveCountBeforeLateMute = eval("str(_tcpReceiveCount)");
+                output.write("@MAIN:MUTE=Off\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true",
+                    "_tcpReceiveCount > " + receiveCountBeforeLateMute);
+                assertEventuallyEquals("Off", "lookup_local_event('Main Muting').getArg()");
+                reconnected.setSoTimeout(250);
+                assertThrows(SocketTimeoutException.class, () -> readCrLfCommand(input));
+
+                eval("COMMAND_RESPONSE_TIMEOUT_SECONDS = 0.1");
+                reconnected.setSoTimeout(10000);
+                node.getLocalActions().get(new SimpleName("Get Main Power")).call(null);
+                assertEquals("@MAIN:PWR=?", readCrLfCommand(input));
+                assertEventuallyEquals("false", "_commsConnected");
+                assertEventuallyEquals("true", "_activeCommandRequest is None");
+                assertEventuallyEquals("true", "len(commandQueue) == 0");
+            }
+
+            simulator.close();
+            assertEventuallyEquals("false", "_commsConnected");
+            assertEventuallyEquals("true", "all(poller.isStopped() for poller in pollers)");
+            assertEventuallyEquals("true", "status_timer.isStopped()");
+            assertEventuallyEquals("2", "str(local_event_Status.getArg().get('level'))");
+        }
+    }
+
+    @Test
+    public void yamahaYncaDiscoveryParsesTheHostAndStartsConfiguredComms() throws Exception {
+        try (ServerSocket simulator = new ServerSocket(
+                0, 1, InetAddress.getByName("127.0.0.1"))) {
+            simulator.setSoTimeout(20000);
+            loadRecipe(
+                "yamahaYncaDiscoveryPilot",
+                "yamaha-av-receiver-ynca",
+                "{\"remoteBindingValues\":{\"events\":{\"UPnPBeacon\":{"
+                    + "\"node\":\"Discovery\",\"event\":\"Beacon\"}}}}");
+            assertEquals("true", eval("tcp is None"));
+            eval("YNCA_TCPPORT = " + simulator.getLocalPort());
+            eval("remote_event_UPnPBeacon({'presentationurl':"
+                + "'http://127.0.0.1:1234/device.xml'})");
+
+            try (Socket connection = simulator.accept()) {
+                assertEventuallyEquals("true", "_commsConnected");
+                assertEquals("127.0.0.1", eval("local_event_DiscoveredIPAddress.getArg()"));
+                eval("stopPollers()");
+                eval("param_IPAddress = '192.0.2.1'; "
+                    + "remote_event_UPnPBeacon({'presentationurl':'http://192.0.2.2/'})");
+                assertEquals("127.0.0.1", eval("local_event_DiscoveredIPAddress.getArg()"));
+                eval("local_event_DiscoveredIPAddress.persistNow() ");
+            }
+
+            node.close();
+            Files.writeString(nodeDirectory.resolve("nodeConfig.json"), "{}");
+            node = new PyNode(
+                sharedHost,
+                new SimpleName("yamahaYncaDiscoveryRemovedPilot"),
+                nodeDirectory.toFile());
+            assertEquals("127.0.0.1", eval("local_event_DiscoveredIPAddress.getArg()"));
+            assertEquals("unbound", eval("str(lookup_remote_event('UPnPBeacon').getNode())"));
+            assertEquals("true", eval("tcp is None"));
+            assertEquals("Not configured", eval("local_event_Status.getArg().get('message')"));
+        }
+    }
+
     private void loadRecipe(String nodeName, String recipeName) throws IOException {
         loadRecipe(nodeName, recipeName, null);
     }
@@ -989,10 +1425,16 @@ public class Python3PilotRecipeTest {
         }
     }
 
-    private static byte[] receiveDatagram(DatagramSocket receiver) throws IOException {
+    private static DatagramPacket receiveDatagramPacket(DatagramSocket receiver)
+            throws IOException {
         byte[] buffer = new byte[4096];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         receiver.receive(packet);
+        return packet;
+    }
+
+    private static byte[] receiveDatagram(DatagramSocket receiver) throws IOException {
+        DatagramPacket packet = receiveDatagramPacket(receiver);
         return Arrays.copyOf(packet.getData(), packet.getLength());
     }
 
