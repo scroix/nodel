@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -1326,19 +1327,327 @@ public class Python3PilotRecipeTest {
         }
     }
 
+    @Test
+    public void appLauncherLoadsDisabledAndPreservesItsPublicBindings() throws Exception {
+        loadRecipe("appLauncherDisabledPilot", "app-launcher");
+
+        assertEquals("false", eval("_configured"));
+        assertEquals("Not configured", eval("local_event_Status.getArg().get('message')"));
+        assertEquals("Off", eval("local_event_Running.getArg()"));
+        assertEquals(Set.of("Power", "PowerOn", "PowerOff"),
+            reducedNames(node.getLocalActions().keySet()));
+        assertEquals(Set.of(
+            "Running", "DesiredPower", "Power", "LastStarted", "FirstInterrupted",
+            "LastInterrupted", "PowerOn", "PowerOff", "Status"),
+            reducedNames(node.getLocalEvents().keySet()));
+        assertEquals(Set.of(
+            "AppPath", "AppArgs", "AppWorkingDir", "PowerStateOnStart", "FeedbackFilters"),
+            reducedNames(node.getParameters().keySet()));
+
+        node.getLocalActions().get(new SimpleName("Power")).call("On");
+        assertEquals("Off", eval("local_event_Running.getArg()"));
+        assertEquals(
+            "['--name', 'Peter Parker', '--count', '2']",
+            eval("str(decodeArgList('--name \\\"Peter Parker\\\" --count 2'))"));
+        assertEquals(
+            "['Spider Man', '--define=a b', 'C:\\\\temp\\\\file.txt']",
+            eval("str(decodeArgList('Spider\\\\ Man --define=\\\"a b\\\" C:\\\\temp\\\\file.txt'))"));
+        assertEquals(
+            "[\"O'Brien\", '\\\\\\\\server\\\\share']",
+            eval("str(decodeArgList(\"O'Brien \\\\\\\\server\\\\share\"))"));
+        assertEquals("true", eval("decodeArgList('\\\"unterminated') is None"));
+        eval("param_FeedbackFilters = "
+            + "({'type': 'Exclude', 'filter': str(i)} for i in range(1000))");
+        eval("process_feedback('bounded feedback')");
+        assertEquals("64", eval("next(param_FeedbackFilters).get('filter')"));
+        eval("param_FeedbackFilters = ['invalid']");
+        eval("process_feedback('malformed filter is ignored')");
+        eval("param_FeedbackFilters = 7");
+        eval("process_feedback('scalar filter collection is ignored')");
+        assertEquals("5 mins ago", eval("toBriefTime(date_now().minusMinutes(5))"));
+    }
+
+    @Test
+    public void appLauncherStartsAndStopsARealManagedProcess() throws Exception {
+        String jshellExecutable = Path.of(
+            System.getProperty("java.home"),
+            "bin",
+            System.getProperty("os.name").toLowerCase().contains("windows")
+                ? "jshell.exe"
+                : "jshell").toString();
+        String config = "{\"paramValues\":{"
+            + "\"AppPath\":" + jsonString(jshellExecutable) + ","
+            + "\"PowerStateOnStart\":\"Off\"}}";
+
+        loadRecipe("appLauncherManagedProcessPilot", "app-launcher", config);
+        assertEquals("true", eval("_configured"));
+        assertEquals("Off", eval("local_event_DesiredPower.getArg()"));
+
+        node.getLocalActions().get(new SimpleName("Power On")).call(null);
+        assertEventuallyEquals("On", "local_event_Running.getArg()", 12);
+        assertEventuallyEquals("On", "local_event_Power.getArg()");
+        assertEquals("true", eval("not is_blank(local_event_LastStarted.getArg())"));
+
+        node.getLocalActions().get(new SimpleName("Power Off")).call(null);
+        assertEventuallyEquals("Off", "local_event_Running.getArg()");
+        assertEventuallyEquals("Off", "local_event_Power.getArg()");
+        eval("statusCheck()");
+        assertEquals("OK", eval("local_event_Status.getArg().get('message')"));
+        assertEquals("true", eval("is_blank(local_event_LastInterrupted.getArg())"));
+
+        node.getLocalActions().get(new SimpleName("Power On")).call(null);
+        node.getLocalActions().get(new SimpleName("Power Off")).call(null);
+        Thread.sleep(6500);
+        assertEquals("Off", eval("local_event_DesiredPower.getArg()"));
+        assertEquals("Off", eval("local_event_Running.getArg()"));
+        assertEquals("true", eval("is_blank(local_event_LastInterrupted.getArg())"));
+
+        node.getLocalActions().get(new SimpleName("Power On")).call(null);
+        assertEventuallyEquals("On", "local_event_Running.getArg()", 12);
+        node.getLocalActions().get(new SimpleName("Power Off")).call(null);
+        node.getLocalActions().get(new SimpleName("Power On")).call(null);
+        assertEventuallyEquals(
+            "true",
+            "_runningGeneration == _powerGeneration and local_event_Running.getArg() == 'On'",
+            12);
+        assertEquals("true", eval("is_blank(local_event_LastInterrupted.getArg())"));
+        node.getLocalActions().get(new SimpleName("Power Off")).call(null);
+        assertEventuallyEquals("Off", "local_event_Running.getArg()");
+
+        node.getLocalActions().get(new SimpleName("Power On")).call(null);
+        assertEventuallyEquals("On", "local_event_Running.getArg()", 12);
+        eval("_process.stop()");
+        assertEventuallyEquals("Off", "local_event_Running.getArg()");
+        assertEquals("true", eval("not is_blank(local_event_FirstInterrupted.getArg())"));
+        assertEquals("true", eval("not is_blank(local_event_LastInterrupted.getArg())"));
+        node.getLocalActions().get(new SimpleName("Power Off")).call(null);
+    }
+
+    @Test
+    public void appLauncherRestoresPersistedOnAndRecordsAnInterruption() throws Exception {
+        String jshellExecutable = Path.of(
+            System.getProperty("java.home"),
+            "bin",
+            System.getProperty("os.name").toLowerCase().contains("windows")
+                ? "jshell.exe"
+                : "jshell").toString();
+        String config = "{\"paramValues\":{"
+            + "\"AppPath\":" + jsonString(jshellExecutable) + ","
+            + "\"PowerStateOnStart\":\"Off\"}}";
+
+        loadRecipe("appLauncherPersistedOnPilot", "app-launcher", config);
+        node.getLocalActions().get(new SimpleName("Power On")).call(null);
+        assertEventuallyEquals("On", "local_event_Running.getArg()", 12);
+        eval("local_event_DesiredPower.persistNow()");
+        assertEventuallyEventSeedCount(1, true);
+
+        node.close();
+        Files.writeString(
+            nodeDirectory.resolve("nodeConfig.json"),
+            "{\"paramValues\":{"
+                + "\"AppPath\":" + jsonString(jshellExecutable) + ","
+                + "\"PowerStateOnStart\":\"(previous)\"}}");
+        node = new PyNode(
+            sharedHost,
+            new SimpleName("appLauncherPersistedOnPilotReloaded"),
+            nodeDirectory.toFile());
+
+        assertEquals("On", eval("local_event_DesiredPower.getArg()"));
+        assertEventuallyEquals("On", "local_event_Running.getArg()", 12);
+        assertEquals("0", eval("str(_runningGeneration)"));
+        eval("_process.stop()");
+        assertEventuallyEquals("Off", "local_event_Running.getArg()");
+        assertEquals("true", eval("not is_blank(local_event_FirstInterrupted.getArg())"));
+        assertEquals("true", eval("not is_blank(local_event_LastInterrupted.getArg())"));
+        node.getLocalActions().get(new SimpleName("Power Off")).call(null);
+    }
+
+    @Test
+    public void frontendMk2CreatesBoundedDynamicBindingsFromNodeContent() throws Exception {
+        String indexXml = """
+            <dashboard title="Pilot">
+              <section title="Controls">
+                <button join="Projector Power"/>
+                <slider action="Volume" event="Level"/>
+                <button action="Local Action"/>
+                <text event="Local Event"/>
+              </section>
+            </dashboard>
+            """;
+        String schemasJson = "{"
+            + "\"button\":{\"type\":\"boolean\"},"
+            + "\"slider_action\":{\"type\":\"number\"},"
+            + "\"slider_signal\":{\"type\":\"number\"}}";
+        String config = "{\"paramValues\":{"
+            + "\"suggestedNode\":\"Simulator Device\","
+            + "\"localOnlyActions\":\"Local Action\","
+            + "\"localOnlySignals\":\"Local Event\"}}";
+
+        loadRecipeWithFiles(
+            "frontendMk2BindingsPilot",
+            "frontend-mk2",
+            config,
+            Map.of(
+                "content/index.xml", indexXml,
+                "content/schemas.json", schemasJson));
+
+        assertEquals(Set.of(
+            "CreateFromSample", "ProjectorPower", "Volume", "LocalAction"),
+            reducedNames(node.getLocalActions().keySet()));
+        assertEquals(Set.of("Clock", "ProjectorPower", "Level", "LocalEvent"),
+            reducedNames(node.getLocalEvents().keySet()));
+        assertEquals(Set.of("ProjectorPower", "Volume"),
+            reducedNames(node.getRemoteActions().keySet()));
+        assertEquals(Set.of("ProjectorPower", "Level"),
+            reducedNames(node.getRemoteEvents().keySet()));
+        assertEquals(Set.of("suggestedNode", "localOnlySignals", "localOnlyActions"),
+            reducedNames(node.getParameters().keySet()));
+        assertEquals("number", eval("dynamicActions['Volume'].getSchema().get('type')"));
+        assertEquals("number", eval("dynamicEvents['Level'].getArgSchema().get('type')"));
+
+        node.getLocalActions().get(new SimpleName("Local Action")).call(Integer.valueOf(7));
+        eval("remoteEventHandlers['Level'](42)");
+        assertEquals("42", eval("str(dynamicEvents['Level'].getArg())"));
+        assertThrows(Exception.class, () -> eval(
+            "reducedNames(" + pythonString("x,".repeat(513)) + ", 'test')"));
+        assertThrows(Exception.class, () -> eval(
+            "boundedBindingName('x' * (MAX_BINDING_NAME_LENGTH + 1))"));
+        assertThrows(Exception.class, () -> eval("boundedBindingName('--')"));
+
+        Path oversized = nodeDirectory.resolve("oversized.xml");
+        Files.writeString(oversized, "x".repeat((256 * 1024) + 1));
+        assertThrows(Exception.class, () -> eval(
+            "readBoundedText(" + pythonString(oversized.toString()) + ", 'test')"));
+
+        Path dtd = nodeDirectory.resolve("dtd.xml");
+        Files.writeString(dtd, "<!DOCTYPE x [<!ENTITY y 'z'>]><x>&y;</x>");
+        assertThrows(Exception.class, () -> eval(
+            "loadIndexFile(" + pythonString(dtd.toString()) + ")"));
+
+        Path utf16Dtd = nodeDirectory.resolve("utf16-dtd.xml");
+        Files.write(
+            utf16Dtd,
+            "<!DOCTYPE x [<!ENTITY y 'z'>]><x>&y;</x>"
+                .getBytes(StandardCharsets.UTF_16LE));
+        assertThrows(Exception.class, () -> eval(
+            "loadIndexFile(" + pythonString(utf16Dtd.toString()) + ")"));
+    }
+
+    @Test
+    public void frontendMk2RejectsLateInvalidDefinitionsWithoutPartialBindings()
+            throws Exception {
+        StringBuilder invalidIndex = new StringBuilder(
+            "<dashboard><button join=\"Partial Binding\"/>");
+        for (int depth = 0; depth < 66; depth++)
+            invalidIndex.append("<section>");
+        for (int depth = 0; depth < 66; depth++)
+            invalidIndex.append("</section>");
+        invalidIndex.append("</dashboard>");
+
+        loadRecipeWithFiles(
+            "frontendMk2AtomicValidationPilot",
+            "frontend-mk2",
+            null,
+            Map.of("content/index.xml", invalidIndex.toString()));
+
+        assertEquals(Set.of("CreateFromSample"), reducedNames(node.getLocalActions().keySet()));
+        assertEquals(Set.of("Clock"), reducedNames(node.getLocalEvents().keySet()));
+        assertTrue(node.getRemoteActions().isEmpty());
+        assertTrue(node.getRemoteEvents().isEmpty());
+        assertEquals("0", eval("str(len(dynamicActions) + len(dynamicEvents))"));
+    }
+
+    @Test
+    public void frontendMk2RejectsSampleSymlinkEscapes() throws Exception {
+        loadRecipe("frontendMk2SamplePilot", "frontend-mk2");
+
+        Path externalDirectory = Files.createTempDirectory("nodel-frontend-external-");
+        Path linkedContent = nodeDirectory.resolve("content");
+        try {
+            try {
+                Files.createSymbolicLink(linkedContent, externalDirectory);
+                Path linkedSample = nodeDirectory.resolve("linked-sample.xml");
+                Files.writeString(linkedSample, "<dashboard/>");
+                assertEquals("false", eval(
+                    "createFromSample(False, " + pythonString(linkedSample.toString()) + ")"));
+                assertTrue(!Files.exists(externalDirectory.resolve("index.xml")));
+                Files.delete(linkedContent);
+            } catch (UnsupportedOperationException | SecurityException | FileSystemException e) {
+                assumeTrue(false, "Symlink creation unavailable: " + e.getMessage());
+            }
+        } finally {
+            Files.deleteIfExists(linkedContent);
+            deleteDirectory(externalDirectory);
+        }
+    }
+
+    @Test
+    public void frontendMk2CopiesOnlyABoundedSampleAndNeverOverwrites() throws Exception {
+        loadRecipe("frontendMk2SamplePilot", "frontend-mk2");
+        assertTrue(reducedNames(node.getLocalActions().keySet()).contains("CreateFromSample"));
+
+        Path oversized = nodeDirectory.resolve("oversized-sample.xml");
+        Files.writeString(oversized, "x".repeat((256 * 1024) + 1));
+        assertEquals("false", eval(
+            "createFromSample(False, " + pythonString(oversized.toString()) + ")"));
+        assertTrue(!Files.exists(nodeDirectory.resolve("content").resolve("index.xml")));
+
+        Path sample = nodeDirectory.resolve("sample.xml");
+        Files.writeString(sample, "<dashboard title=\"Sample\"/>");
+        assertEquals("true", eval(
+            "createFromSample(False, " + pythonString(sample.toString()) + ")"));
+        Path destination = nodeDirectory.resolve("content").resolve("index.xml");
+        assertEquals("<dashboard title=\"Sample\"/>", Files.readString(destination));
+
+        Files.writeString(sample, "<dashboard title=\"Replacement\"/>");
+        assertEquals("false", eval(
+            "createFromSample(False, " + pythonString(sample.toString()) + ")"));
+        assertEquals("<dashboard title=\"Sample\"/>", Files.readString(destination));
+    }
+
     private void loadRecipe(String nodeName, String recipeName) throws IOException {
         loadRecipe(nodeName, recipeName, null);
     }
 
     private void loadRecipe(String nodeName, String recipeName, String configJson) throws IOException {
+        loadRecipeWithFiles(nodeName, recipeName, configJson, Map.of());
+    }
+
+    private void loadRecipeWithFiles(
+            String nodeName,
+            String recipeName,
+            String configJson,
+            Map<String, String> files) throws IOException {
         Path script = locateRecipesDirectory().resolve(recipeName).resolve("script.py");
         assertTrue(Files.isRegularFile(script), "Recipe script not found: " + script);
 
         nodeDirectory = Files.createTempDirectory("nodel-python3-pilot-node-");
         Files.copy(script, nodeDirectory.resolve("script.py"));
+        for (Map.Entry<String, String> entry : files.entrySet()) {
+            Path destination = nodeDirectory.resolve(entry.getKey()).normalize();
+            assertTrue(destination.startsWith(nodeDirectory), "Test file escaped node directory");
+            Files.createDirectories(destination.getParent());
+            Files.writeString(destination, entry.getValue());
+        }
         if (configJson != null)
             Files.writeString(nodeDirectory.resolve("nodeConfig.json"), configJson);
         node = new PyNode(sharedHost, new SimpleName(nodeName), nodeDirectory.toFile());
+    }
+
+    private static String jsonString(String value) {
+        return "\"" + value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n") + "\"";
+    }
+
+    private static String pythonString(String value) {
+        return "'" + value
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n") + "'";
     }
 
     private String eval(String expression) throws Exception {

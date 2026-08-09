@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.nodel.Handler;
@@ -171,6 +172,22 @@ public class ManagedProcess implements Closeable {
     private enum State {
         Stopped, Started
     }
+
+    /**
+     * Cancellation boundary between publishing a process and invoking its started
+     * callback. State 0 is pending, 1 has begun, and 2 was cancelled.
+     */
+    private static class StartNotification {
+        private AtomicInteger _state = new AtomicInteger();
+
+        public boolean begin() {
+            return _state.compareAndSet(0, 1);
+        }
+
+        public void cancel() {
+            _state.compareAndSet(0, 2);
+        }
+    }
     
     /**
      * Started or stopped
@@ -194,6 +211,12 @@ public class ManagedProcess implements Closeable {
      * (synced around 'lock')
      */
     private Process _process;
+
+    /**
+     * The pending callback for the currently published process.
+     * (synced around 'lock')
+     */
+    private StartNotification _startNotification;
     
     /**
      * The output stream
@@ -540,11 +563,12 @@ public class ManagedProcess implements Closeable {
      */
     public void stop() {
         synchronized(_lock) {
-            if (_shutdown || _state == State.Stopped)
+            if (_shutdown)
                 return;
             
             _state = State.Stopped;
-            
+
+            cancelPendingStartNotification();
             safeClose(_process);
         }
     }
@@ -614,6 +638,7 @@ public class ManagedProcess implements Closeable {
     private void launchAndRead() throws Exception {
         Process process = null;
         OutputStream os = null;
+        StartNotification startNotification = null;
         
         String workingStr = _working;
         
@@ -674,20 +699,24 @@ public class ManagedProcess implements Closeable {
             if (_env != null)
                 processBuilder.environment().putAll(_env);
             
-            process = processBuilder.start();
-            
-            _counterLaunches.incr();
-            
-            // 'inject' countable stream
-            OutputStream stdin = process.getOutputStream();
-            os = new CountableOutputStream(stdin, SharableMeasurementProvider.Null.INSTANCE, _counterStdinRate);
-            
             synchronized (_lock) {
-                if (_shutdown)
+                if (_shutdown || _state != State.Started)
                     return;
+
+                // Keep launch and publication atomic with stop(). A stop either wins
+                // before the OS process starts or closes the published process before
+                // returning to its caller.
+                process = startProcess(processBuilder);
+                _counterLaunches.incr();
+
+                // 'inject' countable stream
+                OutputStream stdin = process.getOutputStream();
+                os = new CountableOutputStream(stdin, SharableMeasurementProvider.Null.INSTANCE, _counterStdinRate);
                     
                 _process = process;
                 _outputStream = os;
+                startNotification = new StartNotification();
+                _startNotification = startNotification;
                 
                 // connection has been successful so reset variables
                 // related to safe backing
@@ -695,8 +724,35 @@ public class ManagedProcess implements Closeable {
                 _gracefulStart = true;
             }
             
-            // fire the started event
-            _callbackHandler.handle(startedCallback, _callbackErrorHandler);
+            // Fire only while this exact process is still active. The notification
+            // token lets stop() cancel a pending callback without running user code
+            // under the internal process lock.
+            final Process startedProcess = process;
+            final StartNotification startedNotification = startNotification;
+            _callbackHandler.handle(new H0() {
+
+                @Override
+                public void handle() {
+                    synchronized (_lock) {
+                        if (_shutdown || _state != State.Started || _process != startedProcess)
+                            startedNotification.cancel();
+                    }
+
+                    if (!startedNotification.begin())
+                        return;
+
+                    try {
+                        Handler.handle(startedCallback);
+
+                    } finally {
+                        synchronized (_lock) {
+                            if (_startNotification == startedNotification)
+                                _startNotification = null;
+                        }
+                    }
+                }
+
+            }, _callbackErrorHandler);
             
             // start reading
             if (_mode == Modes.CharacterDelimitedText) {
@@ -717,7 +773,7 @@ public class ManagedProcess implements Closeable {
             if (os != null)
                 // .waitFor() is required instead of .exitValue() because it is possible (but rare) to get here
                 // with the process not fully dead and cleaned up yet
-                Handler.tryHandle(_stoppedCallback, process.waitFor(), _callbackErrorHandler);
+                _callbackHandler.handle(_stoppedCallback, process.waitFor(), _callbackErrorHandler);
 
             // propagate exception only on unusual termination
             if (_state == State.Started)
@@ -732,6 +788,25 @@ public class ManagedProcess implements Closeable {
             
             safeClose(process);
         }
+    }
+
+    /**
+     * Starts the configured process. Package visibility keeps the launch boundary
+     * testable without exposing it as part of the public toolkit API.
+     */
+    Process startProcess(ProcessBuilder processBuilder) throws IOException {
+        return processBuilder.start();
+    }
+
+    /**
+     * Cancels a callback that has not begun yet. Must be called under _lock.
+     */
+    private void cancelPendingStartNotification() {
+        if (_startNotification == null)
+            return;
+
+        _startNotification.cancel();
+        _startNotification = null;
     }
 
     /**
@@ -837,7 +912,7 @@ public class ManagedProcess implements Closeable {
                 handleReceivedData(str);
             
             // then fire the stopped event and pass through the exit value
-            Handler.tryHandle(_stoppedCallback, process.waitFor(), _callbackErrorHandler);
+            _callbackHandler.handle(_stoppedCallback, process.waitFor(), _callbackErrorHandler);
         }
     }
     
@@ -929,7 +1004,7 @@ public class ManagedProcess implements Closeable {
         
         if (!_shutdown) {
             // then fire the stopped callback
-            Handler.tryHandle(_stoppedCallback, process.waitFor(), _callbackErrorHandler);
+            _callbackHandler.handle(_stoppedCallback, process.waitFor(), _callbackErrorHandler);
         }        
     }    
 
@@ -1422,6 +1497,7 @@ public class ManagedProcess implements Closeable {
             if (_shutdown)
                 return;
 
+            cancelPendingStartNotification();
             safeClose(_process);
         }
     }
@@ -1436,7 +1512,8 @@ public class ManagedProcess implements Closeable {
                 return;
             
             _shutdown = true;
-            
+
+            cancelPendingStartNotification();
             _outputStream = null;
             
             if (_startTimer != null)

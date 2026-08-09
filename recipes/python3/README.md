@@ -23,12 +23,18 @@ Pilot sources are audited against museumsvictoria/nodel-recipes commit
 | [`alcorn-8traxx/`](alcorn-8traxx/script.py) | ForeignNone-safe logging, lazily configured managed `TCP()`, restart-safe binding changes, queued 8 TraXX acknowledgements, bounded responses, and connection-aware status |
 | [`sony-visca-color-video-camera/`](sony-visca-color-video-camera/script.py) | byte-safe VISCA-over-IP framing, sequenced delivery/retry handling, managed UDP readiness, binding-driven configuration, guarded PTZ/preset actions, and bounded HTTP token status checks |
 | [`yamaha-av-receiver-ynca/`](yamaha-av-receiver-ynca/script.py) | Python 3 UPnP URL parsing, lazily configured managed `TCP()`, protocol-paced commands, stopped-until-connected pollers, dynamic zone/input bindings, bounded responses, and connection-aware status |
+| [`app-launcher/`](app-launcher/script.py) | Python 3 process argument parsing, guarded executable resolution, managed parent `Process()` lifecycle, bounded feedback logging, persisted power state, and interruption status |
+| [`frontend-mk2/`](frontend-mk2/script.py) | bounded node-local XML/JSON loading, contained sample creation, Python 3 Java type lookup, and dynamic local/remote frontend bindings |
 
 These alpha examples assume a trusted management network: Nodel's management
 APIs are unauthenticated, and configured devices are trusted peers. The shared
 `get_url` helper limits response size and idle read time but does not impose a
 total response deadline. Simulator tests therefore cover compatibility and
 protocol behaviour, not hostile networks or physical-device validation.
+
+The App Launcher controls the managed parent process. Child-process cleanup is
+provided by the Windows process sandbox when available; on Linux and macOS the
+configured application must not daemonize or leave independent child processes.
 
 ## Trying them
 
