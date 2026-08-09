@@ -486,6 +486,8 @@ test {
 // Integration Tests - all non-E2E-tagged tests (API, smoke and browser-assisted integration tests)
 task integrationTest(type: Test) {
     dependsOn 'startNodelhost'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         excludeTags 'e2e'
     }
@@ -501,6 +503,8 @@ task integrationTest(type: Test) {
 // E2E Tests - Real user interaction tests (click, type, navigate)
 task e2eTest(type: Test) {
     dependsOn 'startNodelhost'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         includeTags 'e2e'
     }
@@ -514,6 +518,7 @@ task e2eTest(type: Test) {
 }
 
 tasks.withType(Test).configureEach {
+    inputs.dir(rootProject.file('recipes/python3'))
     doFirst {
         jvmArgs graalpyJvmArgs()
     }
