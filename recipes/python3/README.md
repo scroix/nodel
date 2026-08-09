@@ -1,13 +1,20 @@
 # Python 3 demo recipes (GraalPy host)
 
-Two small recipes demonstrating modern **Python 3** node scripts running on the
-GraalVM (GraalPy) host. They use f-strings, which do not parse under the legacy
-Jython 2.5 host, alongside `dict.items()`, `print()` and keyword arguments.
+These experimental recipes demonstrate modern **Python 3** node scripts running
+on the GraalVM (GraalPy) host. They live here while v3 is a demo/alpha; the
+production [`museumsvictoria/nodel-recipes`](https://github.com/museumsvictoria/nodel-recipes)
+repository remains a read-only source for compatibility work.
+
+The small demos use Python-3-only syntax directly. Pilot ports preserve the
+official recipe's bindings and protocol behaviour while making device I/O
+opt-in where practical, so merely loading an example does not contact a LAN.
 
 | Recipe | Shows |
 |---|---|
 | [`tcp-device/`](tcp-device/script.py) | parameters, local actions/events, managed `TCP()` helper driving a line-based device |
 | [`scheduler/`](scheduler/script.py) | parameters, local actions/events, managed `Timer()` emitting periodic structured events |
+| [`amx-beacon-receiver/`](amx-beacon-receiver/script.py) | opt-in managed multicast `UDP()`, bounded dynamic discovery events, and AMXB packet parsing; disabling the receiver clears its 128-device registry |
+| [`extron-mvc-121-plus/`](extron-mvc-121-plus/script.py) | guarded managed `TCP()`, stopped-until-configured pollers, mixer actions/events, and response parsing |
 
 ## Trying them
 
