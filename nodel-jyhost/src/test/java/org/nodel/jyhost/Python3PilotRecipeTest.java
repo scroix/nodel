@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
@@ -26,8 +27,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.FutureTask;
@@ -635,6 +639,257 @@ public class Python3PilotRecipeTest {
         assertEventuallyEquals("true", "timer.isStopped()");
     }
 
+    @Test
+    public void oscClientUsesAContainedEncoderAndUdpSimulator() throws Exception {
+        try (DatagramSocket receiver = new DatagramSocket(
+                new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))) {
+            receiver.setSoTimeout(10000);
+            loadRecipe(
+                "oscClientPilot",
+                "osc-client",
+                "{\"paramValues\":{\"ipAddress\":\"127.0.0.1\",\"port\":"
+                    + receiver.getLocalPort()
+                    + ",\"patterns\":[{\"label\":\"Fade\",\"address\":\"/foo/bar\"}]}}");
+
+            assertEquals(Set.of("ipAddress", "port", "patterns"),
+                reducedNames(node.getParameters().keySet()));
+            assertEquals(Set.of("Custom", "Fade"),
+                reducedNames(node.getLocalActions().keySet()));
+            assertTrue(Files.notExists(nodeDirectory.resolve("OSC.py")));
+            assertEventuallyEquals("true", "udp.getListeningPort() > 0", 10);
+            assertEventuallyEquals("true", "_udpReady");
+
+            eval("_udpReady = False");
+            receiver.setSoTimeout(250);
+            node.getLocalActions().get(new SimpleName("Fade")).call(Integer.valueOf(42));
+            assertThrows(SocketTimeoutException.class, () -> receiveDatagram(receiver));
+            eval("_udpReady = True");
+            receiver.setSoTimeout(10000);
+            node.getLocalActions().get(new SimpleName("Fade")).call(Integer.valueOf(42));
+            assertEquals(
+                "2f666f6f2f626172000000002c6600003ed70a3d",
+                HexFormat.of().formatHex(receiveDatagram(receiver)));
+            node.getLocalActions().get(new SimpleName("Fade")).call("");
+            assertEquals(
+                "2f666f6f2f626172000000002c000000",
+                HexFormat.of().formatHex(receiveDatagram(receiver)));
+
+            node.getLocalActions().get(new SimpleName("Custom")).call(
+                Map.of("address", "/cue", "arg", "7"));
+            assertEquals(
+                "2f637565000000002c69000000000007",
+                HexFormat.of().formatHex(receiveDatagram(receiver)));
+
+            node.getLocalActions().get(new SimpleName("Custom")).call(
+                Map.of("address", "/signed", "arg", "-1"));
+            assertEquals(
+                "2f7369676e6564002c660000bf800000",
+                HexFormat.of().formatHex(receiveDatagram(receiver)));
+            assertTrue(Files.notExists(nodeDirectory.resolve("OSC.py")));
+
+            receiver.setSoTimeout(250);
+            node.getLocalActions().get(new SimpleName("Custom")).call(
+                Map.of("address", "relative", "arg", "1"));
+            node.getLocalActions().get(new SimpleName("Custom")).call(
+                Map.of("address", "/overflow", "arg", "2147483648"));
+            assertThrows(SocketTimeoutException.class, () -> receiveDatagram(receiver));
+        }
+    }
+
+    @Test
+    public void alcornLoadsWithoutAnAddressAndPreservesItsBindings() throws Exception {
+        loadRecipe("alcornPilot", "alcorn-8traxx");
+
+        assertEquals("true", eval("tcp is None"));
+        assertEquals("true", eval("timer_Status.isStopped()"));
+        assertEquals("2", eval("str(local_event_Status.getArg().get('level'))"));
+        assertEquals("Not configured", eval("local_event_Status.getArg().get('message')"));
+        eval("info(0, 'ForeignNone-safe logging')");
+        node.getLocalActions().get(new SimpleName("increaseLogLevel")).call(null);
+        assertEquals("1", eval("str(local_event_LogLevel.getArg())"));
+        node.getLocalActions().get(new SimpleName("decreaseLogLevel")).call(null);
+        assertEquals("0", eval("str(local_event_LogLevel.getArg())"));
+
+        assertEquals(Set.of("ipAddress", "Port"), reducedNames(node.getParameters().keySet()));
+        assertEquals(Set.of(
+            "PlayFileToChannel", "LoopPlayToChannel", "AssignSoundToChannel", "ResetChannel",
+            "MuteChannel", "KeylockControl", "PollVersion", "StatusCheck",
+            "increaseLogLevel", "decreaseLogLevel"),
+            reducedNames(node.getLocalActions().keySet()));
+        assertEquals(Set.of(
+            "IPAddress", "Port", "LastContactDetect", "Status", "Version", "LastError",
+            "LogLevel"),
+            reducedNames(node.getLocalEvents().keySet()));
+        assertEquals(Set.of("IPAddress", "Port"), reducedNames(node.getRemoteEvents().keySet()));
+
+        try (ServerSocket simulator = new ServerSocket(
+                0, 1, InetAddress.getByName("127.0.0.1"))) {
+            simulator.setSoTimeout(20000);
+            eval("remote_event_IPAddress('127.0.0.1')");
+            eval("remote_event_Port(" + simulator.getLocalPort() + ")");
+            try (Socket connection = simulator.accept()) {
+                assertEventuallyEquals("true", "tcp is not None");
+                assertEventuallyEquals("true", "_commsConnected");
+                assertEventuallyEquals("true", "timer_Status.isStarted()");
+                eval("timer_Status.stop()");
+                var started = node.getStarted();
+                eval("remote_event_Port(None)");
+                assertEventuallyEquals("true", "tcp is None");
+                assertEventuallyEquals("false", "_commsConnected");
+                assertEventuallyEquals("2", "str(local_event_Status.getArg().get('level'))");
+                assertTrue(node.hasRestarted(started, 10000).compareTo(started) != 0);
+                assertEquals("true", eval("not local_event_Port.getArg() and tcp is None"));
+                assertEquals("2", eval("str(local_event_Status.getArg().get('level'))"));
+                assertEquals("Not configured", eval(
+                    "local_event_Status.getArg().get('message')"));
+            }
+
+            try (ServerSocket rebound = new ServerSocket(
+                    0, 1, InetAddress.getByName("127.0.0.1"))) {
+                rebound.setSoTimeout(20000);
+                eval("remote_event_Port(" + rebound.getLocalPort() + ")");
+                try (Socket connection = rebound.accept()) {
+                    assertEventuallyEquals("true", "_commsConnected");
+                    eval("timer_Status.stop()");
+                }
+            }
+        }
+    }
+
+    @Test
+    public void alcornClearsPersistedOkBeforeConnectingOrWaitingForConfig() throws Exception {
+        loadRecipe("alcornStaleStatusPilot", "alcorn-8traxx");
+        eval("local_event_Status.emit({'level': 0, 'message': 'OK'})");
+        eval("local_event_Status.persistNow()");
+        node.close();
+        node = new PyNode(
+            sharedHost,
+            new SimpleName("alcornStaleStatusUnconfiguredReloaded"),
+            nodeDirectory.toFile());
+
+        assertEquals("false", eval("_commsConnected"));
+        assertEquals("true", eval("timer_Status.isStopped()"));
+        assertEquals("2", eval("str(local_event_Status.getArg().get('level'))"));
+        assertEquals("Not configured", eval("local_event_Status.getArg().get('message')"));
+
+        node.close();
+        Files.writeString(
+            nodeDirectory.resolve("nodeConfig.json"),
+            "{\"paramValues\":{\"ipAddress\":\"127.0.0.1\",\"Port\":\"9\"}}");
+        node = new PyNode(
+            sharedHost,
+            new SimpleName("alcornStaleStatusPilotReloaded"),
+            nodeDirectory.toFile());
+
+        assertEquals("false", eval("_commsConnected"));
+        assertEquals("true", eval("timer_Status.isStopped()"));
+        assertEquals("1", eval("str(local_event_Status.getArg().get('level'))"));
+        assertEquals("Connecting", eval("local_event_Status.getArg().get('message')"));
+    }
+
+    @Test
+    public void alcornConfiguredAddressUsesATcpSimulator() throws Exception {
+        try (ServerSocket simulator = new ServerSocket(
+                0, 1, InetAddress.getByName("127.0.0.1"))) {
+            simulator.setSoTimeout(20000);
+            FutureTask<Socket> accept = new FutureTask<>(simulator::accept);
+            Thread acceptThread = new Thread(accept, "alcorn-8traxx-simulator");
+            acceptThread.setDaemon(true);
+            acceptThread.start();
+
+            loadRecipe(
+                "alcornConfiguredPilot",
+                "alcorn-8traxx",
+                "{\"paramValues\":{\"ipAddress\":\"127.0.0.1\",\"Port\":\""
+                    + simulator.getLocalPort() + "\"}}");
+
+            try (Socket connection = accept.get(20, TimeUnit.SECONDS)) {
+                connection.setSoTimeout(10000);
+                InputStream input = connection.getInputStream();
+                OutputStream output = connection.getOutputStream();
+                assertEventuallyEquals("true", "_commsConnected");
+                assertEventuallyEquals("true", "timer_Status.isStarted()");
+                eval("timer_Status.stop()");
+                String tcpIdentity = eval("str(id(tcp))");
+                eval("remote_event_IPAddress('192.0.2.55')");
+                assertEquals(tcpIdentity, eval("str(id(tcp))"));
+                assertEquals("true", eval("_commsConnected"));
+
+                node.getLocalActions().get(new SimpleName("PollVersion")).call(null);
+                assertEquals("?V", readCommand(input));
+                output.write(("Alcorn McBride 8TraXX V2.1" + "X".repeat(5000) + "\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true",
+                    "len(str(local_event_Version.getArg())) < 5000 "
+                        + "and 'characters truncated]' in str(local_event_Version.getArg())");
+
+                node.getLocalActions().get(new SimpleName("PollVersion")).call(null);
+                assertEquals("?V", readCommand(input));
+                output.write("Alcorn McBride 8TraXX V2.1\r\n"
+                    .getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("V2.1", "local_event_Version.getArg()");
+
+                output.write("E11\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("Media Not Present (E11)", "local_event_LastError.getArg()");
+
+                node.getLocalActions().get(new SimpleName("PlayFileToChannel")).call(
+                    Map.of("Channel", "2", "Sound", Integer.valueOf(12)));
+                assertEquals("122PL", readCommand(input));
+                node.getLocalActions().get(new SimpleName("ResetChannel")).call(
+                    Map.of("Channel", "3"));
+                connection.setSoTimeout(250);
+                assertThrows(SocketTimeoutException.class, () -> readCommand(input));
+                output.write("R\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                connection.setSoTimeout(10000);
+                assertEquals("3RJ", readCommand(input));
+                output.write("R\r\n".getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+
+                connection.setSoTimeout(250);
+                node.getLocalActions().get(new SimpleName("PlayFileToChannel")).call(
+                    Map.of("Channel", "99", "Sound", Integer.valueOf(12)));
+                node.getLocalActions().get(new SimpleName("PlayFileToChannel")).call(
+                    Map.of("Channel", "2", "Sound", Integer.valueOf(999)));
+                node.getLocalActions().get(new SimpleName("AssignSoundToChannel")).call(
+                    Map.of("Channel", "2"));
+                node.getLocalActions().get(new SimpleName("ResetChannel")).call(
+                    Map.of("Channel", Integer.valueOf(0)));
+                assertThrows(SocketTimeoutException.class, () -> readCommand(input));
+                connection.setSoTimeout(10000);
+
+                node.getLocalActions().get(new SimpleName("StatusCheck")).call(null);
+                assertEquals("?V", readCommand(input));
+                eval("_lastReceive = None");
+                output.write("Alcorn McBride 8TraXX V2.1\r\n"
+                    .getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                assertEventuallyEquals("true",
+                    "_lastReceive is not None "
+                        + "and local_event_Status.getArg().get('level') == 0");
+
+                eval("_lastReceive = system_clock() - (6 * 60 * 1000)");
+                eval("local_event_LastContactDetect.emit(str(date_now().minusMinutes(5)))");
+                node.getLocalActions().get(new SimpleName("StatusCheck")).call(null);
+                assertEquals("?V", readCommand(input));
+                assertEquals("true", eval(
+                    "(lambda message: message.startswith('Missing for <') "
+                        + "and message.endswith(' mins') and message[13:-5].isdigit())"
+                        + "(str(local_event_Status.getArg().get('message')))"));
+                output.write("Alcorn McBride 8TraXX V2.1\r\n"
+                    .getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+            }
+
+            assertEventuallyEquals("false", "_commsConnected");
+            assertEventuallyEquals("true", "timer_Status.isStopped()");
+            assertEventuallyEquals("2", "str(local_event_Status.getArg().get('level'))");
+        }
+    }
+
     private void loadRecipe(String nodeName, String recipeName) throws IOException {
         loadRecipe(nodeName, recipeName, null);
     }
@@ -732,6 +987,13 @@ public class Python3PilotRecipeTest {
             if (command.size() >= 256)
                 throw new IOException("Simulator received an oversized command");
         }
+    }
+
+    private static byte[] receiveDatagram(DatagramSocket receiver) throws IOException {
+        byte[] buffer = new byte[4096];
+        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+        receiver.receive(packet);
+        return Arrays.copyOf(packet.getData(), packet.getLength());
     }
 
     private static void serveExtronIn16xxStartup(

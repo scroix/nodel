@@ -19,6 +19,8 @@ Pilot sources are audited against museumsvictoria/nodel-recipes commit
 | [`extron-mvc-121-plus/`](extron-mvc-121-plus/script.py) | guarded managed `TCP()`, stopped-until-configured pollers, mixer actions/events, and response parsing |
 | [`brightsign-brightscript/`](brightsign-brightscript/script.py) | Python 3 HTTP control and bounded state reconciliation for the Brightsign plugin, with polling stopped until an address is configured and cross-host redirects disabled |
 | [`extron-in16xx-mk1/`](extron-in16xx-mk1/script.py) | Python 3 long-integer cleanup, guarded managed `TCP()`, dynamic input bindings, corrected SIS input queries, bounded diagnostics, queue-safe reconnects, and an opt-in raw Send action |
+| [`osc-client/`](osc-client/script.py) | contained Python 3 OSC encoding, parameter-defined actions, bounded message strings, and managed UDP without runtime dependency downloads |
+| [`alcorn-8traxx/`](alcorn-8traxx/script.py) | ForeignNone-safe logging, lazily configured managed `TCP()`, restart-safe binding changes, queued 8 TraXX acknowledgements, bounded responses, and connection-aware status |
 
 These alpha examples assume a trusted management network: Nodel's management
 APIs are unauthenticated, and configured devices are trusted peers. The shared
