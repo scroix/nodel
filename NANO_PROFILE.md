@@ -24,9 +24,12 @@ When running the raw binary non-interactively (background, service, benchmark),
 pass `-Dnodel.consoleless=true`: without it an instant stdin EOF is treated as
 an orderly shutdown request, exactly like the plain jar.
 
-The image defaults to a 128 MiB maximum runtime heap (64 MiB boots but fails
-the node-reload transient that a parameter save triggers — briefly two GraalPy
-contexts — with MemoryError). Set another baked-in
+The image defaults to an 80 MiB maximum runtime heap, the sweet spot measured
+on the target device: 64 MiB boots but fails the node-reload transient that a
+parameter save triggers (briefly two GraalPy contexts) with MemoryError, while
+larger ceilings let the serial GC retain the reload spike (128 MiB settled
+~55 MiB higher after a reload than 80 MiB did). Also pass `-Xmn8m` at launch:
+a small young generation reduced steady RSS by a further ~12 MiB. Set another baked-in
 ceiling when benchmarking by rebuilding, for example:
 
 ```sh
@@ -49,7 +52,7 @@ This is not a drop-in replacement for the standard v3 distribution:
 - The Truffle optimizing runtime is absent. Guest code runs in the fallback
   interpreter, and the expected interpreter-only warning is suppressed only
   in this profile.
-- The baked-in maximum heap defaults to 128 MiB. Change it with
+- The baked-in maximum heap defaults to 80 MiB. Change it with
   `-PnanoMaxHeap=NNm` and rebuild; do not assume a larger heap still meets the
   device RSS gate.
 
