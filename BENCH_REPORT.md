@@ -142,8 +142,11 @@ inference, not measurement.
 | Action/event latency ≤ 2× v2 | p50 1.21×, p95 1.03×, p99 1.20× | **PASS** |
 | Match or beat v2 under equivalent workload | 101.41 vs 134.74 MiB (−25%) | **PASS** |
 
-**Scope limit:** these gates hold for host + 1 node. The supported envelope is
-1–2 nodes; a 2–3 node measurement is needed to fix the exact ceiling.
+**Scope limit:** these gates hold for host + 1 node. No 2-, 3- or 4-node trial
+was run, so the exact ceiling is unmeasured; between the verified 2-node load
+and the failed 5-node load, **the supported envelope is stated conservatively
+as 1–2 nodes.** Anything beyond two nodes must be measured before it is
+deployed.
 
 ## Device stability finding (independent of this work)
 
@@ -164,3 +167,56 @@ The two 1-node v3 configurations differ by 16.3 MiB (101.41 at 80m vs 117.71 at
 run of an identical configuration was performed, so single-trial figures should
 be read with roughly ±10 MiB of uncertainty. The v3-versus-v2 gap (33.3 MiB) is
 comfortably larger than that band; the 90 MiB target miss (11.4 MiB) is not.
+
+
+## Deployment recommendation
+
+**Recommended: a supervised pilot on this device, not an unsupervised cutover
+— and only inside the 1–2 node envelope.**
+
+The memory case is settled: v3 nano uses 25% less RSS than v2 under an
+identical workload, starts 6.5× faster, holds every timer and event, and stays
+within the latency gate. On memory grounds alone it is the better runtime for
+this hardware. Three conditions qualify that:
+
+1. **Node-count ceiling.** Two nodes are proven; five are proven to fail. Do not
+   deploy a third node without measuring it first.
+2. **Compatibility boundary.** Recipes must be Python 3 and must not reach for
+   arbitrary `java.type()`, drop-in JARs, JavaScript, or recipes-sync — see
+   `NANO_PROFILE.md`. Every gallery recipe needs qualifying against that
+   boundary on a staging port before it counts as migrated. No gallery recipes
+   exist on this device yet; the benchmark used a synthetic fixture.
+3. **Device stability is the larger risk.** The reboots and the network drop
+   were load-independent and predate this work. They should be investigated on
+   their own merits; whichever runtime is deployed needs supervision that
+   restarts it automatically, as jsvc does for v2 today.
+
+### Proposed shape (not executed — requires explicit approval)
+
+1. Leave `/opt/nodel` (v2) completely untouched. Install to `/opt/nodel-v3/`:
+   the `nodelhost-nano` binary (verify against `dist/nano/SHA256SUMS`) and its
+   own `nodes/` directory.
+2. systemd unit as the `nodel` user, `Restart=always`:
+   `ExecStart=/opt/nodel-v3/nodelhost-nano -Dnodel.consoleless=true -Xmn8m -p 8085`
+   (`-Dnodel.consoleless=true` is required — without it an stdin EOF shuts the
+   host down; the 80 MiB heap ceiling is baked into the image).
+3. Heap sizing rule: 80 MiB covers host + 1–2 nodes. Validate any change with
+   one parameter-save reload per node — the reload transient, not steady state,
+   is the memory-critical path.
+4. Cutover: stop the v2 service, start the v3 unit on port 8085. Keep v2
+   installed and configured throughout.
+
+### Rollback
+
+1. `systemctl stop nodel-v3` (or kill the process).
+2. Start the v2 service — untouched by this work, still on its original jar
+   (`e46de105…`) and Java 8.
+3. No data migration happens in either direction: v3 keeps its own `nodes/`
+   tree, so rollback is a pure service swap with no state to reconcile.
+4. Verify port 8085 serves and the recipes-sync node advertises.
+
+### What was explicitly not done
+
+No production file, service, hostname, SSH, or logging change; no release
+published, no tag moved, nothing deployed over v2. All trial artifacts live
+under `~nodel/v3-trial/` and can be removed with a single `rm -rf`.
