@@ -53,3 +53,7 @@ out/
 
 # root-project build output (smoke-test work dirs, etc.)
 /build
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]
