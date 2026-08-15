@@ -12,6 +12,11 @@ plugins {
 }
 
 def polyglotVersion = '25.2.4'
+def nanoProfile = providers.gradleProperty('nanoProfile').isPresent()
+def nanoMaxHeap = providers.gradleProperty('nanoMaxHeap').orElse('80m').get()
+
+if (nanoProfile && !(nanoMaxHeap ==~ /(?i)[1-9][0-9]*[kmg]/))
+    throw new GradleException("nanoMaxHeap must be a positive size such as 64m (was '${nanoMaxHeap}')")
 
 // GraalPy's Maven language jar is published with a Linux/x64 ABI descriptor,
 // while python-resources contains native modules for every supported platform.
@@ -95,6 +100,24 @@ dependencies {
     // (no JVM Test Suite plugin) so declare it explicitly to avoid Gradle's older bundled launcher.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
 }
+
+// Keep the normal runtime classpath untouched. The nano profile replaces only
+// native-image's classpath with a filtered copy.
+def nanoNativeRuntimeClasspath = null
+if (nanoProfile) {
+    nanoNativeRuntimeClasspath = configurations.runtimeClasspath.copyRecursive()
+    nanoNativeRuntimeClasspath.exclude group: 'org.graalvm.polyglot', module: 'js'
+    nanoNativeRuntimeClasspath.exclude group: 'org.graalvm.js'
+    nanoNativeRuntimeClasspath.exclude group: 'org.graalvm.truffle', module: 'truffle-runtime'
+    nanoNativeRuntimeClasspath.exclude group: 'org.graalvm.truffle', module: 'truffle-compiler'
+    nanoNativeRuntimeClasspath.exclude group: 'org.eclipse.jgit'
+    nanoNativeRuntimeClasspath.exclude group: 'org.snmp4j'
+    nanoNativeRuntimeClasspath.exclude group: 'io.jsonwebtoken'
+}
+
+// Do not add the native-image build feature to normal class or artifact outputs.
+if (!nanoProfile)
+    sourceSets.main.java.exclude 'org/nodel/jyhost/NanoProfileFeature.java'
 
 // ------------------------------------------------------------------
 // Application plugin
@@ -317,7 +340,10 @@ graalvmNative {
     binaries {
         main {
             resources.autodetect()
-            imageName = 'nodelhost'
+            imageName = nanoProfile ? 'nodelhost-nano' : 'nodelhost'
+            if (nanoProfile) {
+                classpath.setFrom(sourceSets.main.output, nanoNativeRuntimeClasspath)
+            }
             buildArgs.addAll([
                     // If certain classes should init at build-time or run-time:
 
@@ -326,6 +352,15 @@ graalvmNative {
                     // image heap and native-image rejects run-time state there
                     '-H:+ReportExceptionStackTraces'
             ])
+            if (nanoProfile) {
+                buildArgs.addAll([
+                        '-Os',
+                        '-march=compatibility',
+                        '--gc=serial',
+                        "-R:MaxHeapSize=${nanoMaxHeap}",
+                        '--features=org.nodel.jyhost.NanoProfileFeature'
+                ])
+            }
             // (memory-constrained builders can cap the image builder heap via the
             // NATIVE_IMAGE_OPTIONS env var, e.g. '-J-Xmx13g' — see native-image.yml)
         }
