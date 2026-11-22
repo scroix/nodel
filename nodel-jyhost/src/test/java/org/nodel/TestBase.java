@@ -66,7 +66,8 @@ public abstract class TestBase {
      */
     protected static void navigateToHome() {
         page.navigate(BASE_URL);
-        page.waitForSelector(".navbar", new Page.WaitForSelectorOptions().setTimeout(60000));
+        // nodel.js activates the first nav item only after its REST-driven rendering has finished
+        page.waitForSelector(".nav.navbar-nav .active", new Page.WaitForSelectorOptions().setTimeout(60000));
     }
 
     /**
@@ -228,6 +229,18 @@ public abstract class TestBase {
      */
     protected static APIResponse apiPost(String path) {
         return page.request().post(REST_BASE + path);
+    }
+
+    /**
+     * Upload a file into a node's directory via the 'files/save' endpoint
+     * (e.g. a custom 'content/index.xml' dashboard).
+     */
+    protected static APIResponse uploadNodeFile(String nodeName, String path, String content) {
+        return page.request().post(
+            REST_BASE + "/nodes/" + encode(nodeName) + "/files/save?path=" + path,
+            com.microsoft.playwright.options.RequestOptions.create()
+                .setHeader("Content-Type", "application/octet-stream")
+                .setData(content));
     }
 
     /**
